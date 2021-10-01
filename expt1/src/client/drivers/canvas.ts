@@ -7,7 +7,7 @@ import { style } from 'typestyle';
 import xs, { Listener, Stream as S } from 'xstream';
 import dropRepeats from 'xstream/extra/dropRepeats';
 import sampleCombine from 'xstream/extra/sampleCombine';
-import { defaultFontFamily, dFullHeight, dFullWidth, hOpp, hSelf } from '../config';
+import { defaultFontFamily, dFullHeight, dFullWidth, hDiscard, hOpp, hSelf } from '../config';
 import { images } from '../images';
 import { Stencil, StencilName, stencils } from '../stencils';
 import { hashCode, listMin, rectCorner, rotateVector, vectorLength } from '../utils';
@@ -322,7 +322,7 @@ function drawShape(path: Path) {
     if (e.rotate) {
       ctx.restore();
     }
-  }
+  };
 }
 
 function rectPath(eOld: Rect): void {
@@ -353,11 +353,11 @@ function bezierPath(e: Bezier): void {
   ctx.bezierCurveTo(e.cp1X, e.cp1Y, e.cp2X, e.cp2Y, e.endX, e.endY);
 }
 
-function drawRect(e: Rect): void { drawShape(rectPath)(e) }
-function drawCircle(e: Circle): void { drawShape(circlePath)(e) }
-function drawEllipse(e: Ellipse): void { drawShape(ellipsePath)(e) }
-function drawLine(e: Line): void { drawShape(linePath)(e) }
-function drawBezier(e: Bezier): void { drawShape(bezierPath)(e) }
+function drawRect(e: Rect): void { drawShape(rectPath)(e); }
+function drawCircle(e: Circle): void { drawShape(circlePath)(e); }
+function drawEllipse(e: Ellipse): void { drawShape(ellipsePath)(e); }
+function drawLine(e: Line): void { drawShape(linePath)(e); }
+function drawBezier(e: Bezier): void { drawShape(bezierPath)(e); }
 
 function drawArrow(e: Arrow): void {
   prepareShape(e);
@@ -394,7 +394,7 @@ function drawArrow(e: Arrow): void {
   ctx.restore();
 }
 
-export function complexConfig(e: ComplexShape): { st: Stencil, width: number, height: number } {
+export function complexConfig(e: ComplexShape): { st: Stencil, width: number, height: number; } {
   const st = stencils[e.stencil];
   const width = e.width || (e.height ? st.width * e.height / st.height : st.width);
   const height = e.height || (e.width ? st.height * e.width / st.width : st.height);
@@ -420,7 +420,7 @@ function drawComplex(e: ComplexShape): void {
   ctx.restore();
 }
 
-export function imageConfig(e: Image): { el: HTMLImageElement, width: number, height: number } {
+export function imageConfig(e: Image): { el: HTMLImageElement, width: number, height: number; } {
   const el = images[e.image];
   const width = e.width || (e.height ? el.naturalWidth * e.height / el.naturalHeight : el.naturalWidth);
   const height = e.height || (e.width ? el.naturalHeight * e.width / el.naturalWidth : el.naturalHeight);
@@ -439,9 +439,9 @@ function drawImage(e: Image): void {
   }
 }
 
-const textCache: { [k: number]: TextFragment[][] } = {};
+const textCache: { [k: number]: TextFragment[][]; } = {};
 
-const styles: { [k: string]: TextStyle } = {
+const styles: { [k: string]: TextStyle; } = {
   b: {
     fontWeight: 'bold'
   },
@@ -453,8 +453,11 @@ const styles: { [k: string]: TextStyle } = {
   },
   opp: {
     textColor: hOpp[10]
+  },
+  discard: {
+    textColor: hDiscard[10]
   }
-}
+};
 
 function drawText(e: Text): void {
   const m = measureText(e);
@@ -475,7 +478,7 @@ function drawText(e: Text): void {
           width: e.shape.margin ? m.totalWidth + e.shape.margin * 2 : m.totalWidth,
           height: e.shape.margin ? m.totalHeight + e.shape.margin * 2 : m.totalHeight,
           ...pick(['radius', 'stroke', 'strokeWidth', 'fill', 'lineDash', 'shadow'], e.shape)
-        })
+        });
     }
   }
   let x = 0;
@@ -558,7 +561,7 @@ export function measureText(e: Text): TextMeasurement {
 
 function getFragments(e: Text): TextFragment[][] {
   const key = hashCode(JSON.stringify(e, (k, v) => {
-    if (v && v.constructor.name === ColorHelper.name){
+    if (v && v.constructor.name === ColorHelper.name) {
       return v.toString();
     } else {
       return v;
@@ -593,7 +596,7 @@ interface ParseStateWidth extends ParseState {
 
 function makeParse(e: Text) {
   if (!e.width) {
-    const addText = function(s: ParseState, text: string): ParseState {
+    const addText = function (s: ParseState, text: string): ParseState {
       if (text === '' && s.currentFragment.length === 0) {
         return s;
       } else {
@@ -603,9 +606,9 @@ function makeParse(e: Text) {
           currentFragment: []
         };
       }
-    }
+    };
 
-    const doubleBracket = function(s: ParseState, i: number): ParseState {
+    const doubleBracket = function (s: ParseState, i: number): ParseState {
       const text = s.text.slice(0, i + 1);
       if (s.text.length === i + 2) {
         return {
@@ -619,7 +622,7 @@ function makeParse(e: Text) {
           currentFragment: append(text, s.currentFragment)
         };
       }
-    }
+    };
 
     return function parse(s: ParseState): ParseState {
       // console.log(s);
@@ -653,7 +656,7 @@ function makeParse(e: Text) {
             }
           case ']':
             if (s.text[i + 1] === ']') {
-              return doubleBracket(s, i)
+              return doubleBracket(s, i);
             } else {
               return {
                 ...addText(s, s.text.slice(0, i)),
@@ -671,17 +674,17 @@ function makeParse(e: Text) {
           }
         }
       }
-    }
+    };
   } else {
-    const makeFragment = function(s: ParseStateWidth, text: string): TextFragment {
+    const makeFragment = function (s: ParseStateWidth, text: string): TextFragment {
       return createFragment(append(text, s.currentFragment), e, s.styleStack);
-    }
+    };
 
-    const exceedsWidth = function(s: ParseStateWidth, fragment: TextFragment): boolean {
+    const exceedsWidth = function (s: ParseStateWidth, fragment: TextFragment): boolean {
       return (last(s.fragments) as TextFragment[]).length !== s.currentWord.length && s.currentWidth + fragment.metrics.width > (e.width as number);
-    }
+    };
 
-    const addFragment = function(s: ParseStateWidth, fragment: TextFragment): ParseStateWidth {
+    const addFragment = function (s: ParseStateWidth, fragment: TextFragment): ParseStateWidth {
       if (exceedsWidth(s, fragment)) {
         return {
           ...s,
@@ -699,14 +702,14 @@ function makeParse(e: Text) {
           currentWidth: s.currentWidth + fragment.metrics.width
         };
       }
-    }
+    };
 
-    const addText = function(s: ParseStateWidth, text: string): ParseStateWidth {
+    const addText = function (s: ParseStateWidth, text: string): ParseStateWidth {
       const fragment = makeFragment(s, text);
       return addFragment(s, fragment);
-    }
+    };
 
-    const doubleBracket = function(s: ParseStateWidth, i: number): ParseStateWidth {
+    const doubleBracket = function (s: ParseStateWidth, i: number): ParseStateWidth {
       const text = s.text.slice(0, i + 1);
       if (s.text.length === i + 2) {
         return {
@@ -715,12 +718,13 @@ function makeParse(e: Text) {
           styleStack: []
         };
       } else {
-        return { ...s,
+        return {
+          ...s,
           text: s.text.slice(i + 2),
           currentFragment: append(text, s.currentFragment)
         };
       }
-    }
+    };
 
     return function parse(s: ParseStateWidth): ParseStateWidth {
       const i = s.text.search(/[[\]\n]/);
@@ -798,7 +802,7 @@ function makeParse(e: Text) {
           }
         }
       }
-    }
+    };
   }
 }
 

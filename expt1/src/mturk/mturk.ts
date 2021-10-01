@@ -1,16 +1,15 @@
-import * as fs from 'fs';
-import * as util from 'util';
 import * as AWS from 'aws-sdk';
+import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
-import { convert, create } from 'xmlbuilder2';
-import { qualAnswerKeys, qualTests } from './qualTypes';
 import {
   compose, concat, filter, find, forEach, fromPairs, has, includes, insert, join, length, map, max, prop, propEq,
   reduce,
   transpose, zip
 } from 'ramda';
-import { F } from 'ts-toolbelt';
+import * as util from 'util';
+import { convert, create } from 'xmlbuilder2';
+import { qualAnswerKeys, qualTests } from './qualTypes';
 import MT = AWS.MTurk;
 
 interface Config {
@@ -57,7 +56,7 @@ interface ReviewPolicy {
   extend?: {
     maxAssignments: number;
     time: number;
-  }
+  };
 }
 interface SavedHit {
   HIT: MT.HIT;
@@ -69,7 +68,7 @@ const config = yaml.load(fs.readFileSync('config.yaml', 'utf8')) as Config;
 // console.log('Config:', fullDepth(config));
 const command = process.argv[2];
 
-AWS.config.getCredentials(function(err) {
+AWS.config.getCredentials(function (err) {
   if (err) {
     console.log(err, err.stack);
   } else {
@@ -124,7 +123,7 @@ const systemQualTypes: { [k in string]: string } = {
   locale: '00000000000000000071',
   adult: '00000000000000000060',
   percentAssignmentsApproved: '000000000000000000L0'
-}
+};
 
 main()
   .then(() => process.exit())
@@ -135,7 +134,7 @@ main()
 
 
 function buildXml(obj: object): string {
-  return create({ encoding: 'UTF-8' }, obj).end({ prettyPrint: true })
+  return create({ encoding: 'UTF-8' }, obj).end({ prettyPrint: true });
 }
 
 function fullDepth(obj: object): string {
@@ -260,7 +259,7 @@ async function createHit(mturk: MTurk, config: Config, name?: string): Promise<v
           ActionsGuarded: qual.actionsGuarded
         };
         if (qual.locales) {
-          req.LocaleValues = map(l => ({ Country: l.country, Subdivision: l.subdivision }), qual.locales)
+          req.LocaleValues = map(l => ({ Country: l.country, Subdivision: l.subdivision }), qual.locales);
         }
         return req;
       }, spec.quals)) as MT.QualificationRequirementList;
@@ -277,12 +276,12 @@ async function createHit(mturk: MTurk, config: Config, name?: string): Promise<v
           { Key: 'ExtendIfKnownAnswerScoreIsLessThan', Values: ['100'] },
           { Key: 'ExtendMaximumAssignments', Values: [spec.review.extend.maxAssignments.toString()] },
           { Key: 'ExtendMinimumTimeInSeconds', Values: [spec.review.extend.time.toString()] }
-        )
+        );
       }
       params.AssignmentReviewPolicy = {
         PolicyName: 'ScoreMyKnownAnswers/2011-09-01',
         Parameters: reviewParams
-      }
+      };
     }
     await mturk.createHIT(params);
   }
@@ -372,7 +371,7 @@ async function workersWithQualType(mturk: MTurk, name?: string): Promise<string[
       if ((response.NumResults as number) < 100) {
         break;
       }
-      nextToken = response.NextToken
+      nextToken = response.NextToken;
     }
     return workers;
   } else {
@@ -399,6 +398,7 @@ async function listAssignments(mturk: MTurk, hitName?: string): Promise<void> {
       HITId: hit.HITId as string,
       MaxResults: 100
     })).Assignments as MT.AssignmentList;
+    console.log(fullDepth(assignments));
     const payments = (await mturk.listBonusPayments({
       HITId: hit.HITId as string,
       MaxResults: 100
@@ -411,9 +411,8 @@ async function listAssignments(mturk: MTurk, hitName?: string): Promise<void> {
         a.AssignmentStatus,
         bonus,
         Number(bonus) === 0 ? '' : includes(a.WorkerId, paidWorkers)
-      ])
+      ]);
     }, assignments);
-    console.log(fullDepth(assignments));
     printTable(insert(0, ['Worker ID', 'Status', 'Bonus', 'Paid'], fields));
   } else {
     throw 'HIT not created!';
@@ -431,7 +430,7 @@ interface Answer {
 }
 function parseBonus(answer: string): string {
   const obj = convert(answer, { format: 'object' }) as unknown as Answers;
-  const f = filter(propEq('QuestionIdentifier', 'bonusss'), obj.QuestionFormAnswers.Answer) as Answer[];
+  const f = filter(propEq('QuestionIdentifier', 'bonus'), obj.QuestionFormAnswers.Answer) as Answer[];
   return f[0].FreeText;
 }
 
@@ -478,7 +477,7 @@ async function sendBonuses(mturk: MTurk, hitName?: string): Promise<void> {
 async function saveHit(mturk: MTurk, hitName?: string, fileName?: string): Promise<string> {
   const hit = await getHit(mturk, hitName);
   if (hit) {
-    const path = fileName || `${hitName}-${(hit.CreationTime as Date).toISOString().slice(0, 16)}.json`;
+    const filePath = fileName || `${hitName}-${(hit.CreationTime as Date).toISOString().slice(0, 16)}.json`;
     const assignments = (await mturk.listAssignmentsForHIT({
       HITId: hit.HITId as string,
       MaxResults: 100
@@ -487,12 +486,12 @@ async function saveHit(mturk: MTurk, hitName?: string, fileName?: string): Promi
       HITId: hit.HITId as string,
       MaxResults: 100
     })).BonusPayments as MT.BonusPaymentList;
-    fs.writeFileSync(path, JSON.stringify({
+    fs.writeFileSync(path.join('../..', filePath), JSON.stringify({
       HIT: hit,
       assignments,
       bonusPayments: payments
     } as SavedHit, null, 2));
-    return path;
+    return filePath;
   } else {
     throw 'HIT not created!';
   }

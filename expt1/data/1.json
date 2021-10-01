@@ -1,0 +1,235 @@
+{
+  "HIT": {
+    "HITId": "3X2LT8FDHWIQFP68TAXM76ETS93W8G",
+    "HITTypeId": "3XGFMK14YH23TGODN81X9YPNMT37FG",
+    "HITGroupId": "3YVRJW0BW22UVJNNAZ2QZGEOMR24ZE",
+    "CreationTime": "2021-09-17T18:02:26.000Z",
+    "Title": "Two-player slider game (10–15 minutes, maximum $1 bonus)",
+    "Description": "You will play a slider game with another person.",
+    "Question": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ExternalQuestion xmlns=\"http://mechanicalturk.amazonaws.com/AWSMechanicalTurkDataSchemas/2006-07-14/ExternalQuestion.xsd\">\n  <ExternalURL>https://experiments.evullab.org/qi-games-1/?type=mturk&amp;ver=wklt</ExternalURL>\n  <FrameHeight>680</FrameHeight>\n</ExternalQuestion>",
+    "Keywords": "game, slider, bonus",
+    "HITStatus": "Reviewable",
+    "MaxAssignments": 10,
+    "Reward": "1.00",
+    "AutoApprovalDelayInSeconds": 60,
+    "Expiration": "2021-09-17T19:02:26.000Z",
+    "AssignmentDurationInSeconds": 3600,
+    "RequesterAnnotation": "wtrRec",
+    "QualificationRequirements": [
+      {
+        "QualificationTypeId": "00000000000000000071",
+        "Comparator": "In",
+        "LocaleValues": [
+          {
+            "Country": "US"
+          }
+        ],
+        "RequiredToPreview": true,
+        "ActionsGuarded": "DiscoverPreviewAndAccept"
+      },
+      {
+        "QualificationTypeId": "00000000000000000060",
+        "Comparator": "EqualTo",
+        "IntegerValues": [
+          1
+        ],
+        "RequiredToPreview": true,
+        "ActionsGuarded": "DiscoverPreviewAndAccept"
+      },
+      {
+        "QualificationTypeId": "00000000000000000040",
+        "Comparator": "GreaterThanOrEqualTo",
+        "IntegerValues": [
+          100
+        ],
+        "RequiredToPreview": true,
+        "ActionsGuarded": "DiscoverPreviewAndAccept"
+      },
+      {
+        "QualificationTypeId": "000000000000000000L0",
+        "Comparator": "GreaterThanOrEqualTo",
+        "IntegerValues": [
+          95
+        ],
+        "RequiredToPreview": true,
+        "ActionsGuarded": "DiscoverPreviewAndAccept"
+      },
+      {
+        "QualificationTypeId": "3WQ121F3BHW2QITJ72852D0FKW26S0",
+        "Comparator": "DoesNotExist",
+        "RequiredToPreview": true,
+        "ActionsGuarded": "DiscoverPreviewAndAccept"
+      }
+    ],
+    "HITReviewStatus": "NotReviewed",
+    "NumberOfAssignmentsPending": 0,
+    "NumberOfAssignmentsAvailable": 1,
+    "NumberOfAssignmentsCompleted": 9
+  },
+  "assignments": [
+    {
+      "AssignmentId": "3BF51CHDTVASMU4AT94928UFJBDH01",
+      "WorkerId": "A2I6ZALE49CVSC",
+      "HITId": "3X2LT8FDHWIQFP68TAXM76ETS93W8G",
+      "AssignmentStatus": "Approved",
+      "AutoApprovalTime": "2021-09-17T18:13:21.000Z",
+      "AcceptTime": "2021-09-17T18:02:32.000Z",
+      "SubmitTime": "2021-09-17T18:12:21.000Z",
+      "ApprovalTime": "2021-09-17T18:12:27.000Z",
+      "Answer": "<?xml version=\"1.0\" encoding=\"ASCII\"?><QuestionFormAnswers xmlns=\"http://mechanicalturk.amazonaws.com/AWSMechanicalTurkDataSchemas/2005-10-01/QuestionFormAnswers.xsd\"><Answer><QuestionIdentifier>bonus</QuestionIdentifier><FreeText>0.94</FreeText></Answer><Answer><QuestionIdentifier>approve</QuestionIdentifier><FreeText>true</FreeText></Answer><Answer><QuestionIdentifier>secretKey</QuestionIdentifier><FreeText>superSecureSecretKey</FreeText></Answer></QuestionFormAnswers>"
+    },
+    {
+      "AssignmentId": "3EFVCAY5L396VP43CDK970GCF1TJ8V",
+      "WorkerId": "A1EDMN0J522ATZ",
+      "HITId": "3X2LT8FDHWIQFP68TAXM76ETS93W8G",
+      "AssignmentStatus": "Approved",
+      "AutoApprovalTime": "2021-09-17T18:19:01.000Z",
+      "AcceptTime": "2021-09-17T18:03:55.000Z",
+      "SubmitTime": "2021-09-17T18:18:01.000Z",
+      "ApprovalTime": "2021-09-17T18:18:23.000Z",
+      "Answer": "<?xml version=\"1.0\" encoding=\"ASCII\"?><QuestionFormAnswers xmlns=\"http://mechanicalturk.amazonaws.com/AWSMechanicalTurkDataSchemas/2005-10-01/QuestionFormAnswers.xsd\"><Answer><QuestionIdentifier>bonus</QuestionIdentifier><FreeText>0.56</FreeText></Answer><Answer><QuestionIdentifier>approve</QuestionIdentifier><FreeText>true</FreeText></Answer><Answer><QuestionIdentifier>secretKey</QuestionIdentifier><FreeText>superSecureSecretKey</FreeText></Answer></QuestionFormAnswers>"
+    },
+    {
+      "AssignmentId": "33FBRBDW6OZJNBYX2L3NKW3HPHKC8A",
+      "WorkerId": "A1XVEKS9O73ERE",
+      "HITId": "3X2LT8FDHWIQFP68TAXM76ETS93W8G",
+      "AssignmentStatus": "Approved",
+      "AutoApprovalTime": "2021-09-17T18:23:26.000Z",
+      "AcceptTime": "2021-09-17T18:02:32.000Z",
+      "SubmitTime": "2021-09-17T18:22:26.000Z",
+      "ApprovalTime": "2021-09-17T18:22:28.000Z",
+      "Answer": "<?xml version=\"1.0\" encoding=\"ASCII\"?><QuestionFormAnswers xmlns=\"http://mechanicalturk.amazonaws.com/AWSMechanicalTurkDataSchemas/2005-10-01/QuestionFormAnswers.xsd\"><Answer><QuestionIdentifier>bonus</QuestionIdentifier><FreeText>0.61</FreeText></Answer><Answer><QuestionIdentifier>approve</QuestionIdentifier><FreeText>true</FreeText></Answer><Answer><QuestionIdentifier>secretKey</QuestionIdentifier><FreeText>superSecureSecretKey</FreeText></Answer></QuestionFormAnswers>"
+    },
+    {
+      "AssignmentId": "3CTOC39K37Q2VBZK28S3T0KH4HNJ78",
+      "WorkerId": "A16FOFEYAERZVB",
+      "HITId": "3X2LT8FDHWIQFP68TAXM76ETS93W8G",
+      "AssignmentStatus": "Approved",
+      "AutoApprovalTime": "2021-09-17T18:51:22.000Z",
+      "AcceptTime": "2021-09-17T18:26:34.000Z",
+      "SubmitTime": "2021-09-17T18:50:22.000Z",
+      "ApprovalTime": "2021-09-17T18:50:27.000Z",
+      "Answer": "<?xml version=\"1.0\" encoding=\"ASCII\"?><QuestionFormAnswers xmlns=\"http://mechanicalturk.amazonaws.com/AWSMechanicalTurkDataSchemas/2005-10-01/QuestionFormAnswers.xsd\"><Answer><QuestionIdentifier>bonus</QuestionIdentifier><FreeText>0.99</FreeText></Answer><Answer><QuestionIdentifier>approve</QuestionIdentifier><FreeText>true</FreeText></Answer><Answer><QuestionIdentifier>secretKey</QuestionIdentifier><FreeText>superSecureSecretKey</FreeText></Answer></QuestionFormAnswers>"
+    },
+    {
+      "AssignmentId": "35DR22AR5DKLPC3MH04E7SGGADG3XB",
+      "WorkerId": "AVFMTS8A5R4XK",
+      "HITId": "3X2LT8FDHWIQFP68TAXM76ETS93W8G",
+      "AssignmentStatus": "Approved",
+      "AutoApprovalTime": "2021-09-17T19:00:49.000Z",
+      "AcceptTime": "2021-09-17T18:02:32.000Z",
+      "SubmitTime": "2021-09-17T18:59:49.000Z",
+      "ApprovalTime": "2021-09-17T19:00:23.000Z",
+      "Answer": "<?xml version=\"1.0\" encoding=\"ASCII\"?><QuestionFormAnswers xmlns=\"http://mechanicalturk.amazonaws.com/AWSMechanicalTurkDataSchemas/2005-10-01/QuestionFormAnswers.xsd\"><Answer><QuestionIdentifier>bonus</QuestionIdentifier><FreeText>0.94</FreeText></Answer><Answer><QuestionIdentifier>approve</QuestionIdentifier><FreeText>true</FreeText></Answer><Answer><QuestionIdentifier>secretKey</QuestionIdentifier><FreeText>superSecureSecretKey</FreeText></Answer></QuestionFormAnswers>"
+    },
+    {
+      "AssignmentId": "3HHRAGRYX85KA5EAXIISFSS9Y1L9OT",
+      "WorkerId": "A3EGYBOLHP75QH",
+      "HITId": "3X2LT8FDHWIQFP68TAXM76ETS93W8G",
+      "AssignmentStatus": "Approved",
+      "AutoApprovalTime": "2021-09-17T19:05:34.000Z",
+      "AcceptTime": "2021-09-17T18:29:59.000Z",
+      "SubmitTime": "2021-09-17T19:04:34.000Z",
+      "ApprovalTime": "2021-09-17T19:04:46.000Z",
+      "Answer": "<?xml version=\"1.0\" encoding=\"ASCII\"?><QuestionFormAnswers xmlns=\"http://mechanicalturk.amazonaws.com/AWSMechanicalTurkDataSchemas/2005-10-01/QuestionFormAnswers.xsd\"><Answer><QuestionIdentifier>bonus</QuestionIdentifier><FreeText>0.82</FreeText></Answer><Answer><QuestionIdentifier>approve</QuestionIdentifier><FreeText>true</FreeText></Answer><Answer><QuestionIdentifier>secretKey</QuestionIdentifier><FreeText>superSecureSecretKey</FreeText></Answer></QuestionFormAnswers>"
+    },
+    {
+      "AssignmentId": "3OLQQLKKNSPN4QEUPG69ZACYQ4REJP",
+      "WorkerId": "A39FIG12N9BX1H",
+      "HITId": "3X2LT8FDHWIQFP68TAXM76ETS93W8G",
+      "AssignmentStatus": "Approved",
+      "AutoApprovalTime": "2021-09-17T19:16:42.000Z",
+      "AcceptTime": "2021-09-17T18:58:48.000Z",
+      "SubmitTime": "2021-09-17T19:15:42.000Z",
+      "ApprovalTime": "2021-09-17T19:16:23.000Z",
+      "Answer": "<?xml version=\"1.0\" encoding=\"ASCII\"?><QuestionFormAnswers xmlns=\"http://mechanicalturk.amazonaws.com/AWSMechanicalTurkDataSchemas/2005-10-01/QuestionFormAnswers.xsd\"><Answer><QuestionIdentifier>bonus</QuestionIdentifier><FreeText>1.00</FreeText></Answer><Answer><QuestionIdentifier>approve</QuestionIdentifier><FreeText>true</FreeText></Answer><Answer><QuestionIdentifier>secretKey</QuestionIdentifier><FreeText>superSecureSecretKey</FreeText></Answer></QuestionFormAnswers>"
+    },
+    {
+      "AssignmentId": "3IXEICO792JD5EHKVS1FPS7U78U6T1",
+      "WorkerId": "A1UBXKWNYEYVT9",
+      "HITId": "3X2LT8FDHWIQFP68TAXM76ETS93W8G",
+      "AssignmentStatus": "Approved",
+      "AutoApprovalTime": "2021-09-17T19:18:46.000Z",
+      "AcceptTime": "2021-09-17T18:58:48.000Z",
+      "SubmitTime": "2021-09-17T19:17:46.000Z",
+      "ApprovalTime": "2021-09-17T19:17:49.000Z",
+      "Answer": "<?xml version=\"1.0\" encoding=\"ASCII\"?><QuestionFormAnswers xmlns=\"http://mechanicalturk.amazonaws.com/AWSMechanicalTurkDataSchemas/2005-10-01/QuestionFormAnswers.xsd\"><Answer><QuestionIdentifier>bonus</QuestionIdentifier><FreeText>1.00</FreeText></Answer><Answer><QuestionIdentifier>approve</QuestionIdentifier><FreeText>true</FreeText></Answer><Answer><QuestionIdentifier>secretKey</QuestionIdentifier><FreeText>superSecureSecretKey</FreeText></Answer></QuestionFormAnswers>"
+    },
+    {
+      "AssignmentId": "3O7L7BFSHEPR9FUO7YL9N9XYDP2EID",
+      "WorkerId": "A7T06JMP6BTDS",
+      "HITId": "3X2LT8FDHWIQFP68TAXM76ETS93W8G",
+      "AssignmentStatus": "Approved",
+      "AutoApprovalTime": "2021-09-17T19:49:21.000Z",
+      "AcceptTime": "2021-09-17T18:55:02.000Z",
+      "SubmitTime": "2021-09-17T19:48:21.000Z",
+      "ApprovalTime": "2021-09-17T19:48:27.000Z",
+      "Answer": "<?xml version=\"1.0\" encoding=\"ASCII\"?><QuestionFormAnswers xmlns=\"http://mechanicalturk.amazonaws.com/AWSMechanicalTurkDataSchemas/2005-10-01/QuestionFormAnswers.xsd\"><Answer><QuestionIdentifier>bonus</QuestionIdentifier><FreeText>0.79</FreeText></Answer><Answer><QuestionIdentifier>approve</QuestionIdentifier><FreeText>true</FreeText></Answer><Answer><QuestionIdentifier>secretKey</QuestionIdentifier><FreeText>superSecureSecretKey</FreeText></Answer></QuestionFormAnswers>"
+    }
+  ],
+  "bonusPayments": [
+    {
+      "WorkerId": "A2I6ZALE49CVSC",
+      "BonusAmount": "0.94",
+      "AssignmentId": "3BF51CHDTVASMU4AT94928UFJBDH01",
+      "Reason": "Bonus for your total reward in the game.",
+      "GrantTime": "2021-09-17T20:16:42.000Z"
+    },
+    {
+      "WorkerId": "AVFMTS8A5R4XK",
+      "BonusAmount": "0.94",
+      "AssignmentId": "35DR22AR5DKLPC3MH04E7SGGADG3XB",
+      "Reason": "Bonus for your total reward in the game.",
+      "GrantTime": "2021-09-17T20:16:42.000Z"
+    },
+    {
+      "WorkerId": "A39FIG12N9BX1H",
+      "BonusAmount": "1.00",
+      "AssignmentId": "3OLQQLKKNSPN4QEUPG69ZACYQ4REJP",
+      "Reason": "Bonus for your total reward in the game.",
+      "GrantTime": "2021-09-17T20:16:42.000Z"
+    },
+    {
+      "WorkerId": "A1XVEKS9O73ERE",
+      "BonusAmount": "0.61",
+      "AssignmentId": "33FBRBDW6OZJNBYX2L3NKW3HPHKC8A",
+      "Reason": "Bonus for your total reward in the game.",
+      "GrantTime": "2021-09-17T20:16:42.000Z"
+    },
+    {
+      "WorkerId": "A1EDMN0J522ATZ",
+      "BonusAmount": "0.56",
+      "AssignmentId": "3EFVCAY5L396VP43CDK970GCF1TJ8V",
+      "Reason": "Bonus for your total reward in the game.",
+      "GrantTime": "2021-09-17T20:16:42.000Z"
+    },
+    {
+      "WorkerId": "A1UBXKWNYEYVT9",
+      "BonusAmount": "1.00",
+      "AssignmentId": "3IXEICO792JD5EHKVS1FPS7U78U6T1",
+      "Reason": "Bonus for your total reward in the game.",
+      "GrantTime": "2021-09-17T20:16:42.000Z"
+    },
+    {
+      "WorkerId": "A3EGYBOLHP75QH",
+      "BonusAmount": "0.82",
+      "AssignmentId": "3HHRAGRYX85KA5EAXIISFSS9Y1L9OT",
+      "Reason": "Bonus for your total reward in the game.",
+      "GrantTime": "2021-09-17T20:16:42.000Z"
+    },
+    {
+      "WorkerId": "A16FOFEYAERZVB",
+      "BonusAmount": "0.99",
+      "AssignmentId": "3CTOC39K37Q2VBZK28S3T0KH4HNJ78",
+      "Reason": "Bonus for your total reward in the game.",
+      "GrantTime": "2021-09-17T20:16:42.000Z"
+    },
+    {
+      "WorkerId": "A7T06JMP6BTDS",
+      "BonusAmount": "0.79",
+      "AssignmentId": "3O7L7BFSHEPR9FUO7YL9N9XYDP2EID",
+      "Reason": "Bonus for your total reward in the game.",
+      "GrantTime": "2021-09-17T20:16:42.000Z"
+    }
+  ]
+}

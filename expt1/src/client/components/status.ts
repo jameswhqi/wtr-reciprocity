@@ -83,9 +83,9 @@ export function Status(sources: Sources): Sinks {
               x: cCenterX + shiftX * dLoadingRadius,
               y: cCenterY + shiftY * dLoadingRadius,
               fill: hOpp[i + 2],
-            }
+            };
           }, range(0, 8))
-        )
+        );
       }
     } else {
       return [];
@@ -98,5 +98,5 @@ export function Status(sources: Sources): Sinks {
     canvas: canvas$,
     state: xs.merge(initR$, stepR$),
     value: targets$.map(ts => ({ targets: ts }))
-  }
+  };
 }

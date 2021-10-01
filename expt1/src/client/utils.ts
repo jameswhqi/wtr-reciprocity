@@ -98,7 +98,7 @@ export function elementsToTargets<T extends string>(targets: readonly T[]) {
         return undefined;
       }
     }, targets)) as Target<T>[];
-  }
+  };
 }
 
 export function renameTargets<T extends string, U extends string>(mapping: Partial<Record<T, U>>, targets: Target<T>[]): Target<U>[] {
@@ -139,7 +139,7 @@ export function strictR<T>(r: (state: T) => T): Reducer<T> {
     } else {
       return r(s);
     }
-  }
+  };
 }
 
 // export function kindIs<K extends string>(kind: K) {
@@ -185,4 +185,8 @@ export function nextStage<T extends string>(stages: readonly T[], stage: T): T {
   const i = findIndex(equals(stage), stages);
   const j = i + 1 === stages.length ? 0 : i + 1;
   return stages[j];
+}
+
+export function propsClass(className: string): { props: { className: string; }; } {
+  return { props: { className } };
 }

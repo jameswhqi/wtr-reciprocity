@@ -14,7 +14,7 @@ cssRule('html', {
 });
 cssRule('*, *:before, *:after', {
   boxSizing: 'inherit'
-})
+});
 cssRule('body', {
   margin: 0,
   fontSize: '24px',

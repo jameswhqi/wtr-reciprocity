@@ -1,15 +1,14 @@
-import { button, dd, div, dl, dt, h1, li, MainDOMSource, ol, p, span, VNode } from '@cycle/dom';
+import { button, dd, div, dl, dt, h1, li, MainDOMSource, p, span, ul, VNode } from '@cycle/dom';
 import { style } from 'typestyle';
-import { Stream as S } from 'xstream';
+import xs, { Stream as S } from 'xstream';
 import { sButton } from '../config';
-import { Client } from '../drivers/client';
+import { client } from '../drivers/client';
 
 interface EventOut {
   kind: 'endWelcome';
 }
 interface Sources {
   DOM: MainDOMSource;
-  client: S<Client>;
 }
 interface Sinks {
   DOM: S<VNode>;
@@ -46,7 +45,7 @@ const sWelcomeSona = style({
       content: `''`,
       display: 'block'
     },
-    '& ol': {
+    '& ul': {
       margin: 0
     },
   }
@@ -69,7 +68,7 @@ const sButtonRow = style({ textAlign: 'center' });
 
 export function Welcome(sources: Sources): Sinks {
   // view
-  const dom$ = sources.client.map(c => c.kind === 'sona' ?
+  const dom$ = xs.of(client.kind === 'sona' ?
     div({ props: { className: sWelcomeSona } }, [
       h1('University of California, San Diego'),
       h1('Consent to act as a research subject'),
@@ -81,15 +80,14 @@ export function Welcome(sources: Sources): Sinks {
         dt('Procedures'),
         dd([
           'If you agree to participate in this study, the following will happen to you:',
-          ol([
-            li('You will sit at the computer and play a series of games with a computer agent.'),
-            li('Try to get the highest score you can.')
+          ul([
+            li('You will sit at the computer and play a slider game with another person randomly paired with you.')
           ])
         ]),
         dt('Risks'),
-        dd('No potential risks or discomforts are anticipated except that the task may be slightly boring.'),
+        dd('No potential risks or discomforts are anticipated.'),
         dt('Payment/Remuneration'),
-        dd('You will receive half an hour of course credit. The experiment will last approximately 20 minutes.'),
+        dd('You will receive half an hour of course credit. The experiment will last approximately 15 minutes.'),
         dt('Rights'),
         dd('You may call the UCSD Human Research Protection Program at 858-657-5100 to ask about your rights as a ' +
           'research subject or to report research-related problems.'),
@@ -99,14 +97,8 @@ export function Welcome(sources: Sources): Sinks {
           'benefits to society in fields ranging from education to design of airplane cockpits, but these benefits ' +
           'will be indirect.'),
         dt('Technical problems'),
-        dd([
-          span({ style: { color: 'red', fontWeight: 'bold' } }, 'If the game freezes on the next screen, please ' +
-            'try a different browser and/or computer, and enter the version of your system and browser that have ' +
-            'the problem at the end of the experiment,'),
-          span({ style: { fontWeight: 'bold' } }, ' where you can find further instructions.'),
-          ' If you encounter other technical problems that prevent you from completing the experiment, please send a ' +
-          'description of the problems to wqi@ucsd.edu.'
-        ]),
+        dd('If you encounter technical problems that prevent you from completing the experiment, please send a ' +
+          'description of the problems to wqi@ucsd.edu.'),
         dt('Explanation'),
         dd('If you have other research-related questions or problems, you may reach Edward Vul at 858-534-4401.'),
         dt('Voluntary nature of participation'),
@@ -144,5 +136,5 @@ export function Welcome(sources: Sources): Sinks {
   return {
     DOM: dom$,
     event: event$
-  }
+  };
 }

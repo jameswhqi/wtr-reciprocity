@@ -8,6 +8,7 @@ specifiers:
   '@cycle/isolate': ^5.2.0
   '@cycle/run': ^5.5.0
   '@cycle/state': ^1.5.0
+  '@types/dedent': ^0.7.0
   '@types/js-yaml': ^4.0.3
   '@types/ramda': ^0.27.44
   '@typescript-eslint/eslint-plugin': ^4.29.3
@@ -17,6 +18,7 @@ specifiers:
   copy-webpack-plugin: ^9.0.1
   core-js: ^3.16.4
   csx: ^10.0.2
+  dedent: ^0.7.0
   eslint: ^7.32.0
   eslint-webpack-plugin: ^3.0.1
   html-webpack-plugin: ^5.3.2
@@ -46,6 +48,7 @@ devDependencies:
   '@cycle/isolate': 5.2.0
   '@cycle/run': 5.5.0
   '@cycle/state': 1.5.0
+  '@types/dedent': 0.7.0
   '@types/ramda': 0.27.44
   '@typescript-eslint/eslint-plugin': 4.29.3_5b13bab190e8051f191796d8c4619073
   '@typescript-eslint/parser': 4.29.3_eslint@7.32.0+typescript@4.4.2
@@ -54,6 +57,7 @@ devDependencies:
   copy-webpack-plugin: 9.0.1_webpack@5.51.1
   core-js: 3.16.4
   csx: 10.0.2
+  dedent: 0.7.0
   eslint: 7.32.0
   eslint-webpack-plugin: 3.0.1_eslint@7.32.0+webpack@5.51.1
   html-webpack-plugin: 5.3.2_webpack@5.51.1
@@ -1361,6 +1365,10 @@ packages:
     resolution: {integrity: sha512-t73xJJrvdTjXrn4jLS9VSGRbz0nUY3cl2DMGDU48lKl+HR9dbbjW2A9r3g40VA++mQpy6uuHg33gy7du2BKpog==}
     dev: true
 
+  /@types/dedent/0.7.0:
+    resolution: {integrity: sha512-EGlKlgMhnLt/cM4DbUSafFdrkeJoC9Mvnj0PUCU7tFmTjMjNRT957kXCx0wYm3JuEq4o4ZsS5vG+NlkM2DMd2A==}
+    dev: true
+
   /@types/eslint-scope/3.7.1:
     resolution: {integrity: sha512-SCFeogqiptms4Fg29WpOTk5nHIzfpKCemSN63ksBQYKTcXoJEmJagV+DhVmbapZzY4/5YaOV1nZwrsU79fFm1g==}
     dependencies:
@@ -2306,6 +2314,10 @@ packages:
         optional: true
     dependencies:
       ms: 2.1.2
+    dev: true
+
+  /dedent/0.7.0:
+    resolution: {integrity: sha1-JJXduvbrh0q7Dhvp3yLS5aVEMmw=}
     dev: true
 
   /deep-equal/1.1.1:

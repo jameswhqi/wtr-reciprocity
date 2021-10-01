@@ -1,5 +1,6 @@
 import isolate from '@cycle/isolate';
 import { Reducer as R, StateSource } from '@cycle/state';
+import dedent from 'dedent';
 import { always, concat, find, flatten, map, propEq, unnest, update } from 'ramda';
 import xs, { Stream as S } from 'xstream';
 import delay from 'xstream/extra/delay';
@@ -7,8 +8,10 @@ import sc from 'xstream/extra/sampleCombine';
 import { black, grays, white } from '../colors';
 import { cBoardY, cOppBoardX, cSelfBoardX, cSelfIconY, dArrowLength, dBoardSize, dFullHeight, dFullWidth, dMsgInnerSep, dMsgStrokeWidth, fMsg, secondRatio } from '../config';
 import { CanvasElement, CanvasMouseEvent, HAnchor, VAnchor } from '../drivers/canvas';
+import { client } from '../drivers/client';
 import { kindIs, renameTargets, rotateVector, Show, strictR, Target, vectorLength } from '../utils';
 import { Stage as AppStage } from './app';
+import { PayoffReceiver } from './board';
 import { Button, State as ButtonState, TargetName as ButtonTargetName } from './button';
 import { EventIn as TrialEventIn, EventOut as TrialEventOut, State as TrialState, TargetName as TrialTargetName, Trial, Unit as TrialUnit } from './trial';
 
@@ -42,11 +45,12 @@ interface Sinks {
   event: S<EventOut>;
 }
 
-type SRS = S<R<State>>
+type SRS = S<R<State>>;
 
 interface Step {
   name: string;
   trialShow: Show<TrialUnit>;
+  oppReceiver?: PayoffReceiver;
   trialEventStart?: TrialEventIn;
   message: Message | Callout;
   proceed: ProceedAfterWait | ProceedOnEvent;
@@ -93,7 +97,11 @@ const steps: Step[] =
       kind: 'callout',
       targetName: 'prevButton',
       sep: 10,
-      text: 'In this tutorial,\nuse these two buttons\nto step forward/backward.',
+      text: dedent`
+        In this tutorial,
+        use these two buttons
+        to step forward/backward.
+      `,
       anchor: 'nw',
       direction: 'se'
     },
@@ -108,7 +116,10 @@ const steps: Step[] =
       kind: 'callout',
       targetName: 'selfIcon',
       sep: 0,
-      text: 'In this experiment,\nyou are the [self b|red] player.',
+      text: dedent`
+        In this experiment,
+        you are the [self b|red] player.
+      `,
       anchor: 'ne',
       direction: 'sw'
     },
@@ -138,13 +149,21 @@ const steps: Step[] =
       kind: 'callout',
       targetName: 'oppIcon',
       sep: 0,
-      text: 'You will play a multi-round game\nwith a [opp b|blue] player (we will call it [opp|Blue]).\n[opp|Blue] also starts with a total reward of $0.00.',
+      text: dedent`
+        You will play a multi-round game
+        with a [opp b|blue] player (we will call it [opp|Blue]).
+        [opp|Blue] also starts with a total reward of $0.00,
+        but their total is hidden from you.
+        [opp|Blue] will be a person randomly paired with you,
+        and they walk through exactly the same tutorial
+        as you do now.
+      `,
       anchor: 'sw',
       direction: 'ne'
     },
     proceed: {
       kind: 'wait',
-      duration: 4
+      duration: 5
     }
   }, {
     name: 'board',
@@ -171,7 +190,10 @@ const steps: Step[] =
       kind: 'callout',
       targetName: 'selfSlider',
       sep: -40,
-      text: 'There is a [b|curve] on the board.\nNow click somewhere on the curve.',
+      text: dedent`
+        There is a [b|curve] on the board.
+        Now click somewhere on the curve.
+      `,
       anchor: 'e',
       direction: 'w'
     },
@@ -186,7 +208,10 @@ const steps: Step[] =
       kind: 'callout',
       targetName: 'selfThumb',
       sep: 5,
-      text: 'The curve is actually a slider track.\nNow try sliding the “handle” along the track.',
+      text: dedent`
+        The curve is actually a slider track.
+        Now try sliding the “handle” along the track.
+      `,
       anchor: 'e',
       direction: 'w'
     },
@@ -201,7 +226,12 @@ const steps: Step[] =
       kind: 'callout',
       targetName: 'selfSelfBarNumber',
       sep: 10,
-      text: 'The [b|horizontal] location of the handle\ncorresponds to a [self b|reward for you],\nwhich is proportional to the length of the [self b|red bar].\nNow slide the handle to see how the reward changes.',
+      text: dedent`
+        The [b|horizontal] location of the handle
+        corresponds to a [self b|reward for you],
+        which is proportional to the length of the [self b|red bar].
+        Now slide the handle to see how the reward changes.
+      `,
       anchor: 'ne',
       direction: 'sw'
     },
@@ -216,7 +246,12 @@ const steps: Step[] =
       kind: 'callout',
       targetName: 'selfOppBarNumber',
       sep: 10,
-      text: 'The [b|vertical] location of the handle\ncorresponds to a [opp b|reward for Blue],\nwhich is proportional to the length of the [opp b|blue bar].\nNow slide the handle to see how the reward changes.',
+      text: dedent`
+        The [b|vertical] location of the handle
+        corresponds to a [opp b|reward for Blue],
+        which is proportional to the length of the [opp b|blue bar].
+        Now slide the handle to see how the reward changes.
+      `,
       anchor: 'ne',
       direction: 'sw'
     },
@@ -231,7 +266,10 @@ const steps: Step[] =
       kind: 'message',
       x: cSelfBoardX + dBoardSize / 2 + 20,
       y: cBoardY,
-      text: 'Now slide the handle to see\nhow both rewards change simultaneously.',
+      text: dedent`
+        Now slide the handle to see
+        how both rewards change simultaneously.
+      `,
       anchor: 'w',
       dim: false
     },
@@ -246,7 +284,11 @@ const steps: Step[] =
       kind: 'callout',
       targetName: 'confirmButton',
       sep: 10,
-      text: 'Slide the handle to the position\nwhere the [b|two rewards] look the best to you.\nAfter that, click the “Confirm” button.',
+      text: dedent`
+        Slide the handle to the position
+        where the [b|two rewards] look the best to you.
+        After that, click the “Confirm” button.
+      `,
       anchor: 'ne',
       direction: 'sw'
     },
@@ -264,7 +306,14 @@ const steps: Step[] =
       kind: 'callout',
       targetName: 'oppBoard',
       sep: 10,
-      text: '[opp|Blue] also has a board\nand a slider in front of them.\nThe same time [self|you] decide\nthe location of [self|your handle],\n[opp|Blue] also needs to decide\nthe location of [opp|their handle].',
+      text: dedent`
+        [opp|Blue] also has a board
+        and a slider in front of them.
+        The same time [self|you] decide
+        the location of [self|your handle],
+        [opp|Blue] also needs to decide
+        the location of [opp|their handle].
+      `,
       anchor: 'w',
       direction: 'e'
     },
@@ -279,7 +328,10 @@ const steps: Step[] =
       kind: 'callout',
       targetName: 'oppStatus',
       sep: 5,
-      text: 'When [opp|Blue] is thinking,\nthis icon will be displayed.',
+      text: dedent`
+        When [opp|Blue] is thinking,
+        this icon will be displayed.
+      `,
       anchor: 'sw',
       direction: 'ne'
     },
@@ -298,7 +350,10 @@ const steps: Step[] =
       kind: 'callout',
       targetName: 'oppStatus',
       sep: 5,
-      text: 'When [opp|Blue] has made a decision,\nthe icon will change to a check mark.',
+      text: dedent`
+        When [opp|Blue] has made a decision,
+        the icon will change to a check mark.
+      `,
       anchor: 'sw',
       direction: 'ne'
     },
@@ -316,8 +371,14 @@ const steps: Step[] =
       kind: 'callout',
       targetName: 'oppThumb',
       sep: 10,
-      text: 'The location of [opp|Blue]’s handle also corresponds to\na [opp|reward for Blue] and a [self|reward for you].\nWhen [self|you] are making your decision,\nyou don’t see [opp|Blue]’s decision.\n' +
-        'Similarly, when [opp|Blue] is making their decision,\nthey don’t see [self|your] decision.',
+      text: dedent`
+        The location of [opp|Blue]’s handle also corresponds to
+        a [opp|reward for Blue] and a [self|reward for you].
+        When [self|you] are making your decision,
+        you don’t see [opp|Blue]’s decision.
+        Similarly, when [opp|Blue] is making their decision,
+        they don’t see [self|your] decision.
+      `,
       anchor: 'w',
       direction: 'e'
     },
@@ -335,8 +396,12 @@ const steps: Step[] =
       kind: 'message',
       x: 400,
       y: 100,
-      text: 'After [opp|Blue]’s decision is revealed to [self|you]\n(and [self|your] decision is revealed to [opp|Blue]),\n' +
-        'the 4 rewards will be added\nto [self|your total] and [opp|Blue’s total].',
+      text: dedent`
+        After [opp|Blue]’s decision is revealed to [self|you]
+        (and [self|your] decision is revealed to [opp|Blue]),
+        the 4 rewards will be added
+        to [self|your total] and [opp|Blue’s total].
+      `,
       anchor: 'c',
       dim: false
     },
@@ -354,7 +419,15 @@ const steps: Step[] =
       kind: 'callout',
       targetName: 'oppThumb',
       sep: 5,
-      text: 'After the rewards are collected,\nyou can drag [opp|Blue’s handle] to see\nwhat options have been available to them.\nOnce you release the mouse,\nthe handle will return to [opp|Blue’s actual decision].\nYou can do the same thing with [self|your handle].\nNow try dragging [opp|Blue’s handle].',
+      text: dedent`
+        After the rewards are collected,
+        you can drag [opp|Blue’s handle] to see
+        what options have been available to them.
+        Once you release the mouse,
+        the handle will return to [opp|Blue’s actual decision].
+        You can do the same thing with [self|your handle].
+        Now try dragging [opp|Blue’s handle].
+      `,
       anchor: 'w',
       direction: 'e'
     },
@@ -372,7 +445,19 @@ const steps: Step[] =
       kind: 'callout',
       targetName: 'selfTotal',
       sep: 0,
-      text: 'At the end of the experiment,\nyou will be given a [b|real monetary bonus]\naccording to your total reward\n(not the exact amount, but a transformation of it).\nThe higher your total reward is,\nthe higher your bonus will be.',
+      text: client.kind === 'mturk' ? dedent`
+        At the end of the experiment,
+        you will be given a [b|real monetary bonus]
+        according to your total reward
+        (not the exact amount, but a transformation of it).
+        The higher your total reward is,
+        the higher your bonus will be.
+      ` : dedent`
+        The total reward you accumulate
+        will not become any real-world reward,
+        but try to imagine that [self|your total reward] and [opp|Blue’s total reward]
+        will actually be given to [self|you] and to [opp|Blue], respectively.
+      `,
       anchor: 'ne',
       direction: 'sw'
     },
@@ -387,7 +472,15 @@ const steps: Step[] =
       kind: 'message',
       x: dFullWidth / 2,
       y: dFullHeight / 2 - 50,
-      text: 'To recap, in every round,\n[self|you] (1) make a decision on [self|your slider],\n(2) click “Confirm”,\n(3) see [opp|Blue]’s decision on [opp|their slider],\n(4) see the 4 rewards collected,\n(5) review the available options for [self|you] and for [opp|Blue],\nand (6) go to the next round.',
+      text: dedent`
+        To recap, in every round,
+        [self|you] (1) make a decision on [self|your slider],
+        (2) click “Confirm”,
+        (3) see [opp|Blue]’s decision on [opp|their slider],
+        (4) see the 4 rewards collected,
+        (5) review the available options for [self|you] and for [opp|Blue],
+        and (6) go to the next round.
+      `,
       anchor: 'c',
       dim: true
     },
@@ -402,13 +495,61 @@ const steps: Step[] =
       kind: 'message',
       x: dFullWidth / 2,
       y: dFullHeight / 2 - 50,
-      text: 'The [b|locations] of [self|your slider] and [opp|Blue’s slider] change from round to round,\nwhich means the possible combinations of the [self|reward for you]\nand the [opp|reward for blue] are different across rounds.\nSo pay attention to how the actual rewards\ncompare with the available options [b|in each round].',
+      text: dedent`
+        The [b|locations] of [self|your slider] and [opp|Blue’s slider] change from round to round,
+        which means the possible combinations of the [self|reward for you]
+        and the [opp|reward for blue] are different across rounds.
+        So pay attention to how the actual rewards
+        compare with the available options [b|in each round].
+      `,
       anchor: 'c',
       dim: true
     },
     proceed: {
       kind: 'wait',
       duration: 6
+    }
+  }, {
+    name: 'discardOpp',
+    trialShow: 'all',
+    oppReceiver: 'discard',
+    message: {
+      kind: 'callout',
+      targetName: 'selfOppBarNumber',
+      sep: 10,
+      text: dedent`
+        In some rounds, the color of the “vertical” reward will be [b discard|gray],
+        which indicates that this reward will be [b|discarded]
+        instead of being given to [opp|Blue].
+        The same thing will happen to [opp|Blue’s board].
+      `,
+      anchor: 'ne',
+      direction: 'sw'
+    },
+    proceed: {
+      kind: 'wait',
+      duration: 3
+    }
+  }, {
+    name: 'oppToSelf',
+    trialShow: 'all',
+    oppReceiver: 'self',
+    message: {
+      kind: 'callout',
+      targetName: 'selfOppBarNumber',
+      sep: 10,
+      text: dedent`
+        In some other rounds, the color of “vertical” reward will be [b self|red],
+        which indicates that this reward will be given to [b self|you] instead of [opp|Blue],
+        in addition to the usual “horizontal” reward.
+        The same thing will happen to [opp|Blue’s board].
+      `,
+      anchor: 'ne',
+      direction: 'sw'
+    },
+    proceed: {
+      kind: 'wait',
+      duration: 4
     }
   }];
 
@@ -441,11 +582,11 @@ function calcAnchor(a: Anchor): [HAnchor, VAnchor, number, number] {
 export function buildCallout<T extends string>(target: Target<T>, anchor: Anchor, direction: Direction, sep: number, text: string): CanvasElement[] {
   const [_1, _2, anchorShiftX, anchorShiftY] = calcAnchor(anchor);
   const [hAnchor, vAnchor, dirShiftX, dirShiftY] = calcAnchor(direction);
-  const actualAnchorShiftX = -anchorShiftX * target.width / 2
-  const actualAnchorShiftY = -anchorShiftY * target.height / 2
+  const actualAnchorShiftX = -anchorShiftX * target.width / 2;
+  const actualAnchorShiftY = -anchorShiftY * target.height / 2;
   const [rotatedAnchorShiftX, rotatedAnchorShiftY] = target.rotate
-  ? rotateVector(actualAnchorShiftX, actualAnchorShiftY, target.rotate)
-  : [actualAnchorShiftX, actualAnchorShiftY];
+    ? rotateVector(actualAnchorShiftX, actualAnchorShiftY, target.rotate)
+    : [actualAnchorShiftX, actualAnchorShiftY];
   const dirShiftLength = vectorLength(dirShiftX, dirShiftY);
   const arrowEndX = target.x + rotatedAnchorShiftX + sep * dirShiftX / dirShiftLength;
   const arrowEndY = target.y + rotatedAnchorShiftY + sep * dirShiftY / dirShiftLength;
@@ -525,11 +666,14 @@ export function Tutorial(sources: Sources): Sinks {
   // children 2
   const trialEventStart$ = xs.merge(firstStep$, nextStep$)
     .map(([_, s]) => s.trialEventStart)
-    .filter((e): e is TrialEventIn => e !== undefined)
+    .filter((e): e is TrialEventIn => e !== undefined);
   const trialEventEnd$ = xs.create<TrialEventIn>();
   const trial = isolate(Trial, 'trial')({
     ...sources,
-    props: currentStep$.map(s => ({ show: s.trialShow })),
+    props: currentStep$.map(s => ({
+      show: s.trialShow,
+      oppReceiver: s.oppReceiver || 'opp'
+    })),
     event: xs.merge(
       trialEventStart$,
       trialEventEnd$,
@@ -548,7 +692,7 @@ export function Tutorial(sources: Sources): Sinks {
       .compose(sc(state$))
       .filter(([e, s]) => {
         const proceed = steps[s.step].proceed;
-        return kindIs('event')(proceed) && proceed.predicate(e)
+        return kindIs('event')(proceed) && proceed.predicate(e);
       })
       .mapTo(null),
     waited$
@@ -697,5 +841,5 @@ export function Tutorial(sources: Sources): Sinks {
     state: xs.merge(initR$, startTutorialR$, nextStepR$, readyForNextR$, prevStepR$, endTutorialR$, <SRS>prevButton.state, <SRS>nextButton.state, <SRS>trial.state),
     canvas: xs.combine(canvas$, prevButton.canvas, nextButton.canvas, trial.canvas).map(flatten),
     event: endTutorialE$
-  }
+  };
 }

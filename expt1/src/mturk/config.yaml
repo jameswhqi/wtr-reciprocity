@@ -1,15 +1,15 @@
-live: false
+live: true
 hits:
   wtrRec:
     url: 'https://experiments.evullab.org/qi-games-1/?type=mturk&ver=wklt'
     frameHeight: 680
-    title: Two-player slider game (10–15 minutes)
-    description: You will play a slider game with another person (maximum $1 bonus).
+    title: Two-player slider game (10–15 minutes, maximum $1 bonus)
+    description: You will play a slider game with another person.
     reward: 1
-    duration: 3600
+    duration: 1800
     lifetime: 3600
     keywords: 'game, slider, bonus'
-    assignments: 10
+    assignments: 1
     autoApproval: 60
     bonusReason: Bonus for your total reward in the game.
     quals:

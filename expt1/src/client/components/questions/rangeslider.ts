@@ -89,7 +89,7 @@ function calcValue(minValue: number, maxValue: number, ev: MouseEvent, el: HTMLD
   const rect = el.getBoundingClientRect();
   const minX = rect.left + (1 - dWidthRatio) / 2 * rect.width;
   const maxX = rect.left + (1 + dWidthRatio) / 2 * rect.width;
-  return min(max(Math.round(minValue + (ev.clientX - minX) / (maxX - minX) * (maxValue - minValue)), minValue), maxValue)
+  return min(max(Math.round(minValue + (ev.clientX - minX) / (maxX - minX) * (maxValue - minValue)), minValue), maxValue);
 }
 
 function mouseInElement(ev: MouseEvent, el: Element): boolean {
@@ -190,6 +190,6 @@ export function makeRangeSlider(labelText: string, minValue: number, maxValue: n
       DOM: dom$,
       state: xs.merge(initR$, mousedownR$, mousemoveR$, mouseupR$),
       value: value$
-    }
-  }
+    };
+  };
 }

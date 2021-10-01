@@ -31,11 +31,11 @@ export function StorageDriver(storageOp$: S<StorageOp>): S<State> {
         next(_): void {
           const state = sessionStorage.getItem('state');
           if (state) {
-            listener.next(JSON.parse(state))
+            listener.next(JSON.parse(state));
           }
         }
-      })
+      });
     },
-    stop() {}
+    stop() { }
   });
 }

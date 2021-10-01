@@ -6,9 +6,9 @@ import { always, concat, cond, equals, includes, pluck, T } from 'ramda';
 import xs, { Stream as S } from 'xstream';
 import delay from 'xstream/extra/delay';
 import sc from 'xstream/extra/sampleCombine';
-import { cOppBoardX, cSelfIconY, debug } from '../config';
+import { cOppBoardX, cSelfIconY, debug, maxOppLambda, minOppLambda } from '../config';
 import { CanvasData, CanvasMouseEvent } from '../drivers/canvas';
-import { Action, Client } from '../drivers/client';
+import { Action, client } from '../drivers/client';
 import { StorageOp } from '../drivers/storage';
 import { nextStage, renameTargets, strictR } from '../utils';
 import { Button, State as ButtonState, TargetName as ButtonTargetName } from './button';
@@ -34,7 +34,6 @@ interface Sources {
   state: StateSource<State>;
   canvas: S<CanvasMouseEvent>;
   HTTP: HTTPSource;
-  client: S<Client>;
   storage: S<State>;
 }
 interface Sinks {
@@ -66,8 +65,6 @@ export function App(sources: Sources): Sinks {
     .map(([r, s]) => r === 'error' && s.failCount < 1 ? 'error' : 'success');
   const error$ = response$.filter(equals('error'));
   const success$ = response$.filter(equals('success'));
-  
-  const client$ = sources.client;
 
   // children 1
   const welcome = isolate(Welcome, 'welcome')(sources);
@@ -108,7 +105,7 @@ export function App(sources: Sources): Sinks {
       .compose(sc(state$))
       .filter(([_, s]) => s.stage === 'game' && !s.showTutorial)
       .map(([e, _]) => e),
-    props: xs.combine(client$, targets$).map(([c, t]) => ({ targets: t, preview: c.kind === 'preview' })),
+    props: targets$.map(t => ({ targets: t })),
     event: endTutorial$.mapTo({ kind: 'startGame' })
   });
   const debrief = isolate(Debrief, 'debrief')(sources);
@@ -165,10 +162,11 @@ export function App(sources: Sources): Sinks {
   const loadOp$ = sources.DOM.select('#loadbutton').events('click').mapTo<StorageOp>({ kind: 'load' });
 
   const request$ = endDebrief$
-    .compose(sc(client$, state$, debrief.value))
-    .map(([_, c, s, v]) => {
+    .compose(sc(state$, debrief.value))
+    .map(([_, s, v]) => {
       const data = {
-        client: c,
+        client,
+        config: { minOppLambda, maxOppLambda },
         trials: s.game!.history,
         debrief: v.values
       };
@@ -177,14 +175,14 @@ export function App(sources: Sources): Sinks {
         url: 'submit.simple.php',
         method: 'POST',
         send: JSON.stringify(data)
-      }
+      };
     });
-  
+
   const stopPopup$ = success$.mapTo({ kind: 'stopPopup' as const });
   const submit$ = endFinal$
     .compose(sc(state$))
     .map(([_, s]) => ({ kind: 'submit' as const, approve: true, bonus: s.game!.bonus! }));
-  
+
   return {
     DOM: dom$,
     state: xs.merge(initR$, nextStageR$, showTutorialR$, storageR$, errorR$, ...<SRS[]>pluck('state', [tutorial, game, tutorialButton, debrief])),
@@ -192,5 +190,5 @@ export function App(sources: Sources): Sinks {
     storage: xs.merge(saveOp$, loadOp$),
     HTTP: request$,
     client: xs.merge(stopPopup$, submit$)
-  }
+  };
 }

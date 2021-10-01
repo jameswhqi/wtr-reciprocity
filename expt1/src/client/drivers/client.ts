@@ -1,5 +1,5 @@
-import xs, { Stream } from 'xstream';
-import sc from 'xstream/extra/sampleCombine';
+import { Stream } from 'xstream';
+import { creditToken, experimentId, params } from '../config';
 
 export type Client = OtherClient | MTurkClient | SonaClient;
 interface OtherClient {
@@ -30,93 +30,103 @@ interface StopPopupAction {
 
 export type Action = SubmitAction | StopPopupAction;
 
-export function ClientDriver(action$: Stream<Action>): Stream<Client> {
-  const params = new URLSearchParams(window.location.search);
-  const clientKind = (() => {
-    const type = params.get('type')
-    switch (type) {
-      case 'mturk':
-        if (params.get('assignmentId') === 'ASSIGNMENT_ID_NOT_AVAILABLE') {
-          return 'preview';
-        } else {
-          return 'mturk';
-        }
-      case 'sona':
-        return 'sona';
-      default:
-        return 'visitor';
-    }
-  })();
-  const popupListener = function(e: BeforeUnloadEvent) {
-    e.preventDefault();
-    const msg = 'Are you sure you want to leave? You will have to start the experiment over again.';
-    e.returnValue = msg;
-    return msg;
-  };
-  if (clientKind === 'mturk') {
-    window.addEventListener('beforeunload', popupListener);
-  }
-  const client = ((): Client => {
-    switch (clientKind) {
-      case 'mturk':
-        return {
-          kind: 'mturk',
-          workerId: params.get('workerId')!,
-          assignmentId: params.get('assignmentId')!,
-          turkSubmitTo: params.get('turkSubmitTo')! + '/mturk/externalSubmit'
-        };
-      case 'sona': {
-        const surveyCode = params.get('survey_code')!;
-        return {
-          kind: 'sona',
-          surveyCode,
-          workerId: 'sona-' + surveyCode
-        };
+const clientKind = (() => {
+  const type = params.get('type');
+  switch (type) {
+    case 'mturk':
+      if (params.get('assignmentId') === 'ASSIGNMENT_ID_NOT_AVAILABLE') {
+        return 'preview';
+      } else {
+        return 'mturk';
       }
-      default:
-        return {
-          kind: clientKind,
-          workerId: `${clientKind}-${Math.random().toString(36).substr(2, 5)}`
-        };
+    case 'sona':
+      return 'sona';
+    default:
+      return 'visitor';
+  }
+})();
+const popupListener = function (e: BeforeUnloadEvent) {
+  e.preventDefault();
+  const msg = 'Are you sure you want to leave? You will have to start the experiment over again.';
+  e.returnValue = msg;
+  return msg;
+};
+if (clientKind === 'mturk') {
+  window.addEventListener('beforeunload', popupListener);
+}
+export const client = ((): Client => {
+  switch (clientKind) {
+    case 'mturk':
+      return {
+        kind: 'mturk',
+        workerId: params.get('workerId')!,
+        assignmentId: params.get('assignmentId')!,
+        turkSubmitTo: params.get('turkSubmitTo')! + '/mturk/externalSubmit'
+      };
+    case 'sona': {
+      const surveyCode = params.get('survey_code')!;
+      return {
+        kind: 'sona',
+        surveyCode,
+        workerId: 'sona-' + surveyCode
+      };
     }
-  })();
+    default:
+      return {
+        kind: clientKind,
+        workerId: `${clientKind}-${Math.random().toString(36).substr(2, 5)}`
+      };
+  }
+})();
 
-  const client$ = xs.of(client);
-
-  action$
-    .compose(sc(client$))
-    .addListener({
-      next: ([a, c]) => {
-        switch (a.kind) {
-          case 'submit':
-            if (c.kind === 'mturk') {
+export function ClientDriver(action$: Stream<Action>): void {
+  action$.addListener({
+    next: a => {
+      switch (a.kind) {
+        case 'submit':
+          switch (client.kind) {
+            case 'mturk': {
               const form = document.createElement('form');
               form.method = 'POST';
-              form.action = c.turkSubmitTo;
+              form.action = client.turkSubmitTo;
               // should be:
               // live:  		https://www.mturk.com/mturk/externalSubmit
               // sandbox: 	https://workersandbox.mturk.com/mturk/externalSubmit
 
-              form.appendChild(addHidden('assignmentId', c.assignmentId));
+              form.appendChild(addHidden('assignmentId', client.assignmentId));
               form.appendChild(addHidden('bonus', a.bonus.toFixed(2)));
               form.appendChild(addHidden('approve', a.approve ? 'true' : 'false'));
               form.appendChild(addHidden('secretKey', 'superSecureSecretKey'));
 
               document.body.appendChild(form);
               form.submit();
-            } else {
-              window.location.href = "https://www.evullab.org";
+              break;
             }
-            break;
-          case 'stopPopup':
-            if (clientKind === 'mturk') {
-              window.removeEventListener('beforeunload', popupListener);
-            }
-        }
-      }
-    });
+            case 'sona': {
+              const form = document.createElement('form');
+              form.method = 'GET';
+              form.action = 'https://ucsd.sona-systems.com/webstudy_credit.aspx';
+              // systems.com/services/SonaAPI.svc/WebstudyCredit?experiment_id=123&credit_token=9185d436e5f94b1581b0918162f6d7e8&survey_code=XXXX
 
-  return client$;
+              form.appendChild(addHidden('experiment_id', experimentId));
+              form.appendChild(addHidden('credit_token', creditToken));
+              form.appendChild(addHidden('survey_code', client.surveyCode));
+
+              document.body.appendChild(form);
+              form.submit();
+              break;
+            }
+            default:
+              window.location.href = "https://www.evullab.org";
+          }
+          break;
+        case 'stopPopup':
+          if (clientKind === 'mturk') {
+            window.removeEventListener('beforeunload', popupListener);
+          }
+      }
+    }
+  });
 }
 
 function addHidden(name: string, value: string): HTMLInputElement {

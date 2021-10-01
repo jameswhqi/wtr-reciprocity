@@ -60,6 +60,6 @@ export function makeRadioGroup(name: string, labelText: string, values: Array<[s
       DOM: dom$,
       state: xs.merge(initR$, valueR$, touchedR$),
       value: value$
-    }
+    };
   };
 }

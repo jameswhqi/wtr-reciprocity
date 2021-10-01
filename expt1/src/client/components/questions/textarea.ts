@@ -61,7 +61,7 @@ export function makeTextArea(labelText: string) {
           div({ props: { className: sQuestionLabel, innerHTML: labelText } }),
           textarea({ props: { className: sTextarea } }, s.value),
           s.touched && p.show && s.value === '' ? div({ props: { className: sError } }, 'Required') : null
-        ])
+        ]);
       } else {
         return null;
       }
@@ -73,6 +73,6 @@ export function makeTextArea(labelText: string) {
       DOM: dom$,
       state: xs.merge(initR$, valueR$, touchedR$),
       value: value$
-    }
+    };
   };
 }

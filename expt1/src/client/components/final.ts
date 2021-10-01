@@ -33,5 +33,5 @@ export function Final(sources: Sources): Sinks {
   return {
     DOM: dom$,
     event: event$
-  }
+  };
 }

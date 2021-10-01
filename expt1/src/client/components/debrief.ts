@@ -7,6 +7,7 @@ import xs, { Stream as S } from 'xstream';
 import delay from 'xstream/extra/delay';
 import sampleCombine from 'xstream/extra/sampleCombine';
 import { sButton, sQuestionLabel } from '../config';
+import { propsClass } from '../utils';
 import { makeRadioGroup, State as RadioGroupState } from './questions/radiogroup';
 import { makeRangeSlider, State as RangeSliderState } from './questions/rangeslider';
 import { makeTextArea, State as TextAreaState } from './questions/textarea';
@@ -16,7 +17,7 @@ type DebriefValues = Record<Field, string | number>;
 type QuestionState = TextAreaState | RadioGroupState | RangeSliderState;
 export type State = {
   page: number;
-  times: Array<{ page: number, time: number }>;
+  times: Array<{ page: number, time: number; }>;
 } & Partial<Record<Field, QuestionState>>;
 interface EventOut {
   kind: 'endDebrief';
@@ -43,6 +44,9 @@ const sDebrief = style({
   margin: 'auto',
   minWidth: '800px',
   maxWidth: '1000px'
+});
+const sTitle = style({
+  fontSize: '1.5em'
 });
 
 export function Debrief(sources: Sources): Sinks {
@@ -77,7 +81,7 @@ export function Debrief(sources: Sources): Sinks {
       case 'rangeSlider':
         return {
           ...e,
-          component: isolate(makeRangeSlider(e.label, e.minValue, e.maxValue, e.tickLabels))({
+          component: isolate(makeRangeSlider(e.label, e.minValue, e.maxValue, e.tickLabels), e.name)({
             ...sources,
             props: xs.of({ show: true })
           })
@@ -127,7 +131,7 @@ export function Debrief(sources: Sources): Sinks {
   const dom$ = xs.combine(state$, pagesDOM$, pagesError$).map(([s, pd, pe]) => div(
     { props: { className: sDebrief } },
     flatten([
-      h1('Post-experiment survey'),
+      h1(propsClass(sTitle), 'Post-experiment survey'),
       pd[s.page],
       div([
         button({ props: { className: sButton, disabled: pe[s.page] } }, 'Next')
@@ -146,7 +150,7 @@ export function Debrief(sources: Sources): Sinks {
     state: xs.merge(initR$, pagesR$, nextPageR$),
     event: event$,
     value: values$.map(v => ({ values: v }))
-  }
+  };
 }
 
 interface MyVNode {
@@ -181,7 +185,7 @@ const pages: Page[] = [
   [
     {
       kind: 'vnode',
-      vnode: div({ props: { className: sQuestionLabel }}, 'Please answer a few questions about your experience in the experiment.')
+      vnode: div({ props: { className: sQuestionLabel } }, 'Please answer a few questions about your experience in the experiment.')
     },
     {
       kind: 'vnode',
@@ -205,7 +209,7 @@ const pages: Page[] = [
       label: 'In general, how nice (or mean) do you think was the other participant towards you? (Use the slider to answer)',
       minValue: -8,
       maxValue: 8,
-      tickLabels: ['Extremely mean', 'Slightly mean', 'Neutral', 'Slightly nice', 'Extremely nice']
+      tickLabels: ['Extremely mean', 'Moderately mean', 'Neutral', 'Moderately nice', 'Extremely nice']
     }
   ],
   [

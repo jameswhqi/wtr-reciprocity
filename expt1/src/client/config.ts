@@ -1,7 +1,10 @@
 import { style } from 'typestyle';
 import { blues, grays, reds } from './colors';
 
-const params = new URLSearchParams(window.location.search);
+export const experimentId = '2160';
+export const creditToken = '083dbb8cd3984af1855ba65dd86c283b';
+
+export const params = new URLSearchParams(window.location.search);
 
 export const debug = params.get('debug') === 'true';
 const fast = params.get('superFast') === 'true';
@@ -9,13 +12,13 @@ const fast = params.get('superFast') === 'true';
 export const [minOppLambda, maxOppLambda] = (() => {
   switch (params.get('ver')) {
     case 'yqdu':
-      return [-1.2, -.5];
+      return [-1.25, -.75];
     case 'wgwd':
-      return [-.5, 0];
+      return [-.25, .25];
     case 'wklt':
-      return [0, .5];
-    case 'ckkm':
-      return [.5, 1.2];
+      return [.75, 1.25];
+    // case 'ckkm':
+    //   return [.5, 1.2];
     default:
       return [-2, 2];
   }
@@ -26,15 +29,19 @@ export const secondRatio = fast ? 10 : 1000;
 
 export const defaultFontFamily = '"Helvetica Neue", Helvetica, Arial, sans-serif';
 
-export const nPracticeTrials = fast ? 1 : 3;
-export const nRealTrials = fast ? 5 : 15;
+export const nPracticeTrials = fast ? 1 : 5;
+export const practiceDiscardTrials = fast ? [] : [3];
+export const practiceSelfTrials = fast ? [] : [4];
+export const nRealTrials = fast ? 5 : 20;
+export const realDiscardTrials = fast ? [3] : [3, 12];
+export const realSelfTrials = fast ? [4] : [6, 15];
 
 export const maxPayoff = 10;
 
 // dimensions
-export const dFullWidth = 1000
-export const dFullHeight = 680
-export const dBoardOffset = 200
+export const dFullWidth = 1000;
+export const dFullHeight = 680;
+export const dBoardOffset = 200;
 export const dIconOffset = 270;
 export const dBoardSize = 300;
 export const dMsgInnerSep = 10;
@@ -51,6 +58,7 @@ export const cOppIconY = cBoardY - dIconOffset;
 // hues
 export const hSelf = reds;
 export const hOpp = blues;
+export const hDiscard = grays;
 
 // lightnesses
 export const lButtonHoverBg = 2;

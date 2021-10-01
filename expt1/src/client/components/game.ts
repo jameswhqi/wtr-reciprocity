@@ -1,15 +1,17 @@
 import isolate from '@cycle/isolate';
 import { Reducer as R, StateSource } from '@cycle/state';
+import dedent from 'dedent';
 import { always, append, assoc, concat, equals, find, flatten, includes, max, min, prepend, prop, propEq, __ } from 'ramda';
 import xs, { Stream as S } from 'xstream';
 import delay from 'xstream/extra/delay';
 import sc from 'xstream/extra/sampleCombine';
 import { black, grays, white } from '../colors';
-import { cOppBoardX, cSelfIconY, dFullHeight, dFullWidth, dMsgInnerSep, dMsgStrokeWidth, fMsg, maxOppLambda, maxPayoff, minOppLambda, nPracticeTrials, nRealTrials, secondRatio, speedRatio } from '../config';
+import { cOppBoardX, cSelfIconY, dFullHeight, dFullWidth, dMsgInnerSep, dMsgStrokeWidth, fMsg, maxOppLambda, maxPayoff, minOppLambda, nPracticeTrials, nRealTrials, practiceDiscardTrials, practiceSelfTrials, realDiscardTrials, realSelfTrials, secondRatio, speedRatio } from '../config';
 import { CanvasElement, CanvasMouseEvent } from '../drivers/canvas';
+import { client } from '../drivers/client';
 import { kindIs, nextStage, randomUnif, strictR, Target } from '../utils';
 import { TargetName as AppTargetName } from './app';
-import { BoardConfig, calcPayoffs, generateConfig } from './board';
+import { BoardConfig, calcPayoffs, generateConfig, PayoffReceiver } from './board';
 import { Button, State as ButtonState } from './button';
 import { EventIn as TrialEventIn, Stage as TrialStage, StageDoneEvent as TrialStageDoneEvent, stages as trialStages, State as TrialState, Trial } from './trial';
 import { Anchor, buildCallout, Direction } from './tutorial';
@@ -18,13 +20,13 @@ type Stage = typeof stages[number];
 
 export interface Props {
   targets: Target<AppTargetName>[];
-  preview: boolean;
 }
 export interface EventIn {
   kind: 'startGame';
 }
 interface TrialData {
   trialNumber: number;
+  oppReceiver: PayoffReceiver;
   selfConfig: BoardConfig;
   selfLambda: number;
   oppConfig: BoardConfig;
@@ -59,7 +61,7 @@ interface Sinks {
   event: S<EventOut>;
 }
 
-type SRS = S<R<State>>
+type SRS = S<R<State>>;
 
 interface Message {
   kind: 'message';
@@ -83,37 +85,68 @@ const maxPairingTime = 30;
 const messages: Partial<Record<Stage, Message | Callout>> = {
   prePractice: {
     kind: 'message',
-    text: always(`The following are ${nPracticeTrials} practice rounds.\n[opp|Blue] will be a bot, so it will make decisions very quickly.\nAfter the practice rounds, you will be paired with a human to play the real game.`),
+    text: always(dedent`
+      The following are ${nPracticeTrials} practice rounds.
+      [opp|Blue] will be a bot, so it will make decisions very quickly.
+      After the practice rounds, you will be paired with a human to play the real game.
+    `),
   },
   tutorialButton: {
     kind: 'callout',
     targetName: 'tutorialButton',
     sep: 10,
-    text: always('You can click the “Tutorial” button\nto review the tutorial any time.'),
+    text: always(dedent`
+      You can click the “Tutorial” button
+      to review the tutorial any time.
+    `),
     anchor: 'nw',
     direction: 'se',
   },
   donePractice: {
     kind: 'message',
-    text: always('Good job!\nNow you will be paired with a human to play the real game.\nAs a reminder, at the end of the experiment,\nyou will be given a bonus according to your total reward.\nThe higher your total reward is, the higher your bonus will be.\nThe same thing will happen to [opp|Blue].'),
+    text: always(dedent`
+      Good job!
+      Now you will be paired with a human to play the real game.
+    ` + (client.kind === 'mturk' ? dedent`
+      \nAs a reminder, at the end of the experiment,
+      you will be given a bonus according to your total reward.
+      The higher your total reward is, the higher your bonus will be.
+      The same thing will happen to [opp|Blue].
+    ` : '')),
   },
   pairing: {
     kind: 'message',
-    text: always(`Waiting for another participant...\n(The wait time is usually ${minPairingTime}–${maxPairingTime} seconds.)`)
+    text: always(dedent`
+      Waiting for another participant...
+      (The wait time is usually ${minPairingTime}–${maxPairingTime} seconds.)
+    `)
   },
   paired: {
     kind: 'message',
-    text: always(`Pairing success!\nYou will play ${nRealTrials} rounds of the game with the other participant.`)
+    text: always(dedent`
+      Pairing success!
+      You will play ${nRealTrials} rounds of the game with the other participant.
+    `)
   },
   doneReal: {
     kind: 'message',
-    text: s => 'Congratulations! You have completed the game.\n' + (s.bonus === undefined ? '' : s.bonus === 0 ? 'Unfortunately, you didn’t receive a bonus\nbecause your total reward is too low.' : `Your bonus for the total reward is [b|$${s.bonus.toFixed(2)}].\nIt will be sent to your MTurk account\nafter the experiment finishes.`)
+    text: s => 'Congratulations! You have completed the game.' + (client.kind !== 'mturk' || s.bonus === undefined ? '' : s.bonus === 0 ? dedent`
+      \nUnfortunately, you didn’t receive a bonus
+      because your total reward is too low.
+    ` : dedent`
+      \nYour bonus for the total reward is [b|$${s.bonus.toFixed(2)}].
+      It will be sent to your MTurk account
+      after the experiment finishes.
+    `)
   },
   preview: {
     kind: 'message',
-    text: always('Error: You are currently in preview mode.\nPlease accept the HIT to play the real game.')
+    text: always(dedent`
+      Error: You are currently in preview mode.
+      Please accept the HIT to play the real game.
+    `)
   }
-}
+};
 
 const cRoundCounterX = 150;
 const cRoundCounterY = 80;
@@ -125,18 +158,24 @@ export function calcBonus(s: State): number {
 function makeTrialData(s: State): TrialData {
   return {
     trialNumber: s.trialNumber,
+    oppReceiver: getOppReceiver(s.stage, s.trialNumber),
     selfConfig: s.trial!.selfBoardConfig,
     selfLambda: s.trial!.selfBoard!.fixedLambda!,
     oppConfig: s.trial!.oppBoardConfig,
     oppLambda: s.trial!.oppBoard!.fixedLambda!,
     actTime: (s.trial!.times.endAct! - s.trial!.times.startAct!) / 1000,
     reviewTime: (Date.now() - s.trial!.times.startReview!) / 1000
-  }
+  };
 }
 
 function getActTime(trial: number): number {
   const minTime = trial === 0 ? 10 : max(20 - trial, 10);
   return randomUnif(minTime, minTime + 5);
+}
+
+function getOppReceiver(stage: Stage, trial: number): PayoffReceiver {
+  const [discardTrials, selfTrials] = includes(stage, ['paired', 'real', 'doneReal']) ? [realDiscardTrials, realSelfTrials] : [practiceDiscardTrials, practiceSelfTrials];
+  return includes(trial, discardTrials) ? 'discard' : includes(trial, selfTrials) ? 'self' : 'opp';
 }
 
 export function Game(sources: Sources): Sinks {
@@ -181,17 +220,17 @@ export function Game(sources: Sources): Sinks {
       .filter(([_, p, s]) => !includes(s.stage, ['practice', 'donePractice', 'real', 'doneReal'])
         || s.stage === 'practice' && s.trialNumber === nPracticeTrials
         || s.stage === 'real' && s.trialNumber === nRealTrials
-        || s.stage === 'donePractice' && !p.preview)
+        || s.stage === 'donePractice' && client.kind !== 'preview')
       .map(([_1, _2, s]) => nextStage(stages, s.stage)),
     button.event
       .compose(sc(props$, state$))
-      .filter(([_, p, s]) => s.stage === 'donePractice' && !p.preview)
+      .filter(([_, p, s]) => s.stage === 'donePractice' && client.kind !== 'preview')
       .map(_ => xs.of<Stage>('paired').compose(delay(randomUnif(minPairingTime, maxPairingTime) * 1000 / speedRatio)))
       .flatten()
   );
   const goToPreview$ = button.event
     .compose(sc(props$, state$))
-    .filter(([_, p, s]) => s.stage === 'donePractice' && p.preview)
+    .filter(([_, p, s]) => s.stage === 'donePractice' && client.kind === 'preview')
     .mapTo<Stage>('preview');
 
   const trialStageDone$ = xs.create<TrialStageDoneEvent>();
@@ -255,22 +294,29 @@ export function Game(sources: Sources): Sinks {
   )
     .map<TrialEventIn>(lambda => ({ kind: 'oppAct', lambda }));
 
+  const saveTrial$ = button.event
+    .compose(sc(state$))
+    .filter(([_, s]) => s.stage === 'real');
   const nextTrial$ = button.event
     .compose(sc(state$))
     .filter(([_, s]) => s.stage === 'practice' && s.trialNumber !== nPracticeTrials
-      || s.stage === 'real' && s.trialNumber !== nRealTrials);
-  
+      || s.stage === 'real' && s.trialNumber !== nRealTrials)
+    .compose(delay(0));
+
   const startReal$ = nextStage$
     .filter(equals('paired'));
-  
+
   const endGame$ = button.event
     .compose(sc(state$))
-    .filter(([_, s]) => s.stage === 'doneReal')
+    .filter(([_, s]) => s.stage === 'doneReal');
 
   // children 2
   const trial = isolate(Trial, 'trial')({
     ...sources,
-    props: xs.of({ show: 'all', enable: true }),
+    props: state$.map(s => ({
+      show: 'all',
+      oppReceiver: getOppReceiver(s.stage, s.trialNumber)
+    })),
     event: xs.merge(
       xs.merge(startGames$, startReal$, nextTrial$.compose(delay(0))).map(_ => ({
         kind: 'newTrial',
@@ -307,20 +353,23 @@ export function Game(sources: Sources): Sinks {
       .filter(includes(__, ['tutorialButton', 'donePractice', 'paired', 'doneReal']))
       .map(stage => xs.of(null).compose(delay(((<Partial<Record<Stage, number>>>{
         tutorialButton: 2,
-        donePractice: 6,
+        donePractice: client.kind === 'mturk' ? 6 : 2,
         paired: 2,
-        doneReal: 6
+        doneReal: client.kind === 'mturk' ? 6 : 2
       })[stage] as number) * secondRatio)))
       .flatten(),
     trialStageDone$
       .filter(propEq('stage', 'collect'))
   )
     .mapTo<R<State>>(assoc('readyForNext', true));
+  const saveTrialR$ = saveTrial$.mapTo(strictR<State>(s => ({
+    ...s,
+    history: append(makeTrialData(s), s.history)
+  })));
   const nextTrialR$ = nextTrial$.mapTo(strictR<State>(s => ({
     ...s,
     trialNumber: s.trialNumber + 1,
-    readyForNext: false,
-    history: s.stage === 'real' ? append(makeTrialData(s), s.history) : s.history
+    readyForNext: false
   })));
   const addTotalR$ = trialStageDone$
     .compose(sc(state$))
@@ -333,7 +382,7 @@ export function Game(sources: Sources): Sinks {
         ...s,
         minTotal: s.minTotal + selfMin + opp,
         maxTotal: s.maxTotal + selfMax + opp
-      }
+      };
     }));
   const oppActR$ = oppAct$.map(l => strictR<State>(assoc('oppLambda', l)));
   const resetOppLambdaR$ = trialNextStage$
@@ -345,8 +394,7 @@ export function Game(sources: Sources): Sinks {
     .mapTo(strictR<State>(s => ({ ...s, bonus: calcBonus(s) })));
   const endGameR$ = endGame$.mapTo(strictR<State>(s => ({
     ...s,
-    readyForNext: false,
-    history: append(makeTrialData(s), s.history)
+    readyForNext: false
   })));
 
   // view
@@ -380,9 +428,9 @@ export function Game(sources: Sources): Sinks {
       width: dFullWidth,
       height: dFullHeight,
       fill: white.fade(.7)
-    }
+    };
     const message: CanvasElement[] = (() => {
-      const m = messages[s.stage]
+      const m = messages[s.stage];
       if (m) {
         if (m.kind === 'message') {
           return [
@@ -415,7 +463,7 @@ export function Game(sources: Sources): Sinks {
           }
         }
       } else {
-        return []
+        return [];
       }
     })();
     return concat(roundCounter, message);
@@ -424,8 +472,8 @@ export function Game(sources: Sources): Sinks {
   const endGameE$ = endGame$.mapTo<EventOut>({ kind: 'endGame' });
 
   return {
-    state: xs.merge(initR$, changeStageR$, readyR$, nextTrialR$, addTotalR$, oppActR$, resetOppLambdaR$, startRealR$, bonusR$, endGameR$, <SRS>button.state, <SRS>trial.state),
+    state: xs.merge(initR$, changeStageR$, readyR$, saveTrialR$, nextTrialR$, addTotalR$, oppActR$, resetOppLambdaR$, startRealR$, bonusR$, endGameR$, <SRS>button.state, <SRS>trial.state),
     canvas: xs.combine(canvas$, button.canvas, trial.canvas).map(flatten),
     event: endGameE$
-  }
+  };
 }

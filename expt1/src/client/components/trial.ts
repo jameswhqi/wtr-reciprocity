@@ -7,7 +7,7 @@ import sc from 'xstream/extra/sampleCombine';
 import { cSelfBoardX, cSelfIconY } from '../config';
 import { CanvasElement, CanvasMouseEvent } from '../drivers/canvas';
 import { kindIs, mapUnits, nextStage, renameTargets, Show, showOrNot, strictR, Target } from '../utils';
-import { BoardConfig, EventIn as BoardEventIn, EventOut as BoardEventOut, makeBoard, State as BoardState, TargetName as BoardTargetName, Unit as BoardUnit } from './board';
+import { BoardConfig, EventIn as BoardEventIn, EventOut as BoardEventOut, makeBoard, PayoffReceiver, State as BoardState, TargetName as BoardTargetName, Unit as BoardUnit } from './board';
 import { Button, State as ButtonState, TargetName as ButtonTargetName } from './button';
 import { State as StatusState, Status, TargetName as StatusTargetName } from './status';
 
@@ -17,6 +17,7 @@ export type Unit = typeof units[number];
 
 interface Props {
   show: Show<Unit>;
+  oppReceiver: PayoffReceiver;
 }
 interface NewTrialEvent {
   kind: 'newTrial';
@@ -139,11 +140,12 @@ export function Trial(sources: Sources): Sinks {
         selfTotal: 'total'
       }),
       config: s.selfBoardConfig,
-      enable: s.stage === 'act' || s.stage === 'review'
+      enable: s.stage === 'act' || s.stage === 'review',
+      oppReceiver: p.oppReceiver
     })),
     event: xs.merge(
       fixSelfLambda$, collect$, resetLambda$, resetTotal$,
-      oppBoardE$.filter(kindIs('oppCollected')).map(({ value }) => ({ kind: 'collected', value }))
+      oppBoardE$.filter(kindIs('oppCollected')).map(({ value }) => ({ kind: 'otherBoardCollected', value }))
     )
   });
   const oppBoard = isolate(makeBoard('opp'), 'oppBoard')({
@@ -155,11 +157,12 @@ export function Trial(sources: Sources): Sinks {
         oppTotal: 'total'
       }),
       config: s.oppBoardConfig,
-      enable: s.stage === 'review'
+      enable: s.stage === 'review',
+      oppReceiver: p.oppReceiver
     })),
     event: xs.merge(
       setOppLambda$, collect$, resetLambda$, resetTotal$,
-      selfBoard.event.filter(kindIs('oppCollected')).map(({ value }) => ({ kind: 'collected', value }))
+      selfBoard.event.filter(kindIs('oppCollected')).map(({ value }) => ({ kind: 'otherBoardCollected', value }))
     )
   });
   oppBoardE$.imitate(oppBoard.event);
@@ -171,7 +174,7 @@ export function Trial(sources: Sources): Sinks {
       chosen: s.oppLambda !== undefined
     }))
   });
-  
+
   const children = [selfBoard, oppBoard, button, oppStatus];
 
   // intent 2
@@ -259,5 +262,5 @@ export function Trial(sources: Sources): Sinks {
     canvas: xs.combine(...pluck('canvas', children)).map(flatten),
     event: xs.merge(stageDoneE$, selfTouchedE$, oppTouchedE$),
     value: targets$.map<Value>(ts => ({ targets: ts }))
-  }
+  };
 }

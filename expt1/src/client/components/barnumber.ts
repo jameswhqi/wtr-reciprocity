@@ -151,5 +151,5 @@ export function BarNumber(sources: Sources): Sinks {
     canvas: canvas$,
     state: xs.merge(initR$, collectR$, updateR$),
     event: collectedE$
-  }
+  };
 }

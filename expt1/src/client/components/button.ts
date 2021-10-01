@@ -100,8 +100,8 @@ export function Button(sources: Sources): Sinks {
     fontSize: p.fontSize || 24,
     textColor: black
   }] : []) as CanvasElement[]);
-  
-  const targets$ = canvas$.map(elementsToTargets(targets))
+
+  const targets$ = canvas$.map(elementsToTargets(targets));
 
   const clickE$ = canvasMouseE$
     .compose(sc(state$, props$))

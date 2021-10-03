@@ -1,12 +1,12 @@
 import isolate from '@cycle/isolate';
 import { Reducer as R, StateSource } from '@cycle/state';
-import { always, assoc, equals, flatten, includes, pluck, unnest, __ } from 'ramda';
+import { always, assoc, equals, flatten, includes, pluck, prop, unnest, __ } from 'ramda';
 import xs, { Stream as S } from 'xstream';
 import delay from 'xstream/extra/delay';
 import sc from 'xstream/extra/sampleCombine';
 import { cSelfBoardX, cSelfIconY } from '../config';
 import { CanvasElement, CanvasMouseEvent } from '../drivers/canvas';
-import { kindIs, mapUnits, nextStage, renameTargets, Show, showOrNot, strictR, Target } from '../utils';
+import { kindIs, mapUnits, renameTargets, Show, showOrNot, strictR, Target } from '../utils';
 import { BoardConfig, EventIn as BoardEventIn, EventOut as BoardEventOut, makeBoard, PayoffReceiver, State as BoardState, TargetName as BoardTargetName, Unit as BoardUnit } from './board';
 import { Button, State as ButtonState, TargetName as ButtonTargetName } from './button';
 import { State as StatusState, Status, TargetName as StatusTargetName } from './status';
@@ -24,8 +24,9 @@ interface NewTrialEvent {
   selfBoardConfig: BoardConfig;
   oppBoardConfig: BoardConfig;
 }
-interface NextStageEvent {
-  kind: 'nextStage';
+interface SetStageEvent {
+  kind: 'setStage';
+  stage: Stage;
 }
 interface OppActEvent {
   kind: 'oppAct';
@@ -34,7 +35,7 @@ interface OppActEvent {
 interface ResetEvent {
   kind: 'reset';
 }
-export type EventIn = NewTrialEvent | NextStageEvent | OppActEvent | ResetEvent;
+export type EventIn = NewTrialEvent | SetStageEvent | OppActEvent | ResetEvent;
 type Times = Partial<Record<'startAct' | 'endAct' | 'startReview', number>>;
 export interface State {
   selfBoard?: BoardState;
@@ -46,23 +47,20 @@ export interface State {
   oppBoardConfig: BoardConfig;
   oppLambda?: number;
   collected: number;
+  selfTouched: boolean;
+  oppTouched: boolean;
   times: Times;
 }
 export type TargetName = typeof targets[number];
 interface Value {
   targets: Target<TargetName>[];
 }
-export interface StageDoneEvent {
+export type EventOut = {
   kind: 'stageDone';
   stage: Stage;
-}
-interface SelfTouchedEvent {
-  kind: 'selfTouched';
-}
-interface OppTouchedEvent {
-  kind: 'oppTouched';
-}
-export type EventOut = StageDoneEvent | SelfTouchedEvent | OppTouchedEvent;
+} | {
+  kind: 'selfTouched' | 'oppTouched' | 'bothTouched';
+};
 interface Sources {
   props: S<Props>;
   event: S<EventIn>;
@@ -76,7 +74,7 @@ interface Sinks {
   value: S<Value>;
 }
 
-export const stages = ['preAct', 'act', 'postAct', 'showOpp', 'collect', 'review', 'postReview'] as const;
+export const stages = ['preAct', 'act', 'postAct', 'showOpp', 'collect', 'review', 'postReview', 'memory'] as const;
 const units = ['selfBoard', 'selfIcon', 'selfOppPay', 'selfSelfPay', 'selfSlider', 'selfTotal',
   'oppIcon', 'oppTotal', 'oppBoard', 'confirmButton', 'oppStatus'] as const;
 const targets = ['selfIcon', 'selfBoard', 'selfSlider', 'selfThumb', 'selfSelfBarNumber', 'selfOppBarNumber', 'selfTotal',
@@ -88,26 +86,27 @@ export function Trial(sources: Sources): Sinks {
   const state$ = sources.state.stream;//.debug(s => console.log(s.stage));
   const ps$ = xs.combine(props$, state$);
   const newTrial$ = sources.event.filter(kindIs('newTrial'));
-  const nextStage$ = sources.event.filter(kindIs('nextStage'))
-    .compose(sc(state$))
-    .map(([_, s]) => nextStage(stages, s.stage));
+  const setStage$ = sources.event.filter(kindIs('setStage')).map(prop('stage'));
   const oppAct$ = sources.event.filter(kindIs('oppAct'));
   const reset$ = sources.event.filter(kindIs('reset'));
 
-  const fixSelfLambda$ = nextStage$
+  const fixSelfLambda$ = setStage$
     .filter(equals('postAct'))
     .mapTo<BoardEventIn>({ kind: 'fixLambda' });
-  const setOppLambda$ = nextStage$
+  const setOppLambda$ = setStage$
     .filter(equals('showOpp'))
     .compose(sc(state$))
     .map(([_, s]) => ({
       kind: 'setLambda' as const,
       lambda: s.oppLambda
     }));
-  const collect$ = nextStage$
+  const collect$ = setStage$
     .filter(equals('collect'))
     .mapTo({ kind: 'collect' as const });
-  const resetLambda$ = newTrial$.mapTo<BoardEventIn>({
+  const resetLambda$ = xs.merge(
+    newTrial$,
+    setStage$.filter(equals('memory'))
+  ).mapTo<BoardEventIn>({
     kind: 'setLambda',
     lambda: undefined
   });
@@ -140,7 +139,7 @@ export function Trial(sources: Sources): Sinks {
         selfTotal: 'total'
       }),
       config: s.selfBoardConfig,
-      enable: s.stage === 'act' || s.stage === 'review',
+      enable: includes(s.stage, ['act', 'review', 'memory']),
       oppReceiver: p.oppReceiver
     })),
     event: xs.merge(
@@ -157,7 +156,7 @@ export function Trial(sources: Sources): Sinks {
         oppTotal: 'total'
       }),
       config: s.oppBoardConfig,
-      enable: s.stage === 'review',
+      enable: includes(s.stage, ['review', 'memory']),
       oppReceiver: p.oppReceiver
     })),
     event: xs.merge(
@@ -182,6 +181,8 @@ export function Trial(sources: Sources): Sinks {
     selfBoard.event.filter(kindIs('bothCollected')),
     oppBoard.event.filter(kindIs('bothCollected'))
   );
+  const selfTouched$ = selfBoard.event.filter(kindIs('touched'));
+  const oppTouched$ = oppBoard.event.filter(kindIs('touched'));
 
   // model
   const initR$ = xs.of(always<State>({
@@ -189,6 +190,8 @@ export function Trial(sources: Sources): Sinks {
     selfBoardConfig: { vertexSelf: .5, vertexOpp: .5, scale: .3 },
     oppBoardConfig: { vertexSelf: .5, vertexOpp: .5, scale: .3 },
     collected: 0,
+    selfTouched: false,
+    oppTouched: false,
     times: {}
   }));
   const newTrialR$ = newTrial$
@@ -198,11 +201,15 @@ export function Trial(sources: Sources): Sinks {
       selfBoardConfig: e.selfBoardConfig,
       oppBoardConfig: e.oppBoardConfig,
       oppLambda: undefined,
+      selfTouched: false,
+      oppTouched: false,
       collected: 0
     })));
-  const nextStageR$ = nextStage$
+  const setStageR$ = setStage$
     .map(stage => strictR<State>(s => ({
       ...s, stage,
+      selfTouched: stage === 'memory' ? false : s.selfTouched,
+      oppTouched: stage === 'memory' ? false : s.oppTouched,
       times: {
         ...s.times,
         startAct: stage === 'act' ? Date.now() : s.times.startAct,
@@ -214,24 +221,30 @@ export function Trial(sources: Sources): Sinks {
     .map<R<State>>(({ lambda }) => assoc('oppLambda', lambda));
   const collectedR$ = collected$
     .mapTo(strictR<State>(s => ({ ...s, collected: s.collected + 1 })));
+  const selfTouchedR$ = selfTouched$.mapTo<R<State>>(assoc('selfTouched', true));
+  const oppTouchedR$ = oppTouched$.mapTo<R<State>>(assoc('oppTouched', true));
 
   // view
   const stageDoneE$ = xs.merge(
     newTrial$.compose(delay(0)),
     button.event,
-    nextStage$.filter(includes(__, ['postAct', 'showOpp'])).compose(delay(0)),
+    setStage$.filter(includes(__, ['postAct', 'showOpp'])).compose(delay(0)),
     collected$
       .compose(sc(state$))
       .filter(([_, s]) => s.collected === 1)
   )
     .compose(sc(state$))
     .map<EventOut>(([_, s]) => ({ kind: 'stageDone', stage: s.stage }));
-  const selfTouchedE$ = selfBoard.event
-    .filter(kindIs('touched'))
-    .mapTo<EventOut>({ kind: 'selfTouched' });
-  const oppTouchedE$ = oppBoard.event
-    .filter(kindIs('touched'))
-    .mapTo<EventOut>({ kind: 'oppTouched' });
+  const selfTouchedE$ = selfTouched$.mapTo<EventOut>({ kind: 'selfTouched' });
+  const oppTouchedE$ = oppTouched$.mapTo<EventOut>({ kind: 'oppTouched' });
+  const bothTouchedE$ = xs.merge(
+    selfTouched$
+      .compose(sc(state$))
+      .filter(([_, s]) => s.oppTouched),
+    oppTouched$
+      .compose(sc(state$))
+      .filter(([_, s]) => s.selfTouched)
+  ).mapTo<EventOut>({ kind: 'bothTouched' });
 
   const targets$ = xs.combine(selfBoard.value, oppBoard.value, button.value, oppStatus.value)
     .map(([sbv, obv, bv, osv]) => unnest([
@@ -258,9 +271,9 @@ export function Trial(sources: Sources): Sinks {
     ]));
 
   return {
-    state: xs.merge(initR$, newTrialR$, nextStageR$, oppActR$, collectedR$, ...pluck('state', children) as SRS[]),
+    state: xs.merge(initR$, newTrialR$, setStageR$, oppActR$, collectedR$, selfTouchedR$, oppTouchedR$, ...pluck('state', children) as SRS[]),
     canvas: xs.combine(...pluck('canvas', children)).map(flatten),
-    event: xs.merge(stageDoneE$, selfTouchedE$, oppTouchedE$),
+    event: xs.merge(stageDoneE$, selfTouchedE$, oppTouchedE$, bothTouchedE$),
     value: targets$.map<Value>(ts => ({ targets: ts }))
   };
 }

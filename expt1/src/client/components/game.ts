@@ -1,19 +1,19 @@
 import isolate from '@cycle/isolate';
 import { Reducer as R, StateSource } from '@cycle/state';
 import dedent from 'dedent';
-import { always, append, assoc, concat, equals, find, flatten, includes, max, min, prepend, prop, propEq, __ } from 'ramda';
+import { always, append, assoc, equals, find, flatten, includes, max, min, prepend, prop, propEq, unnest, __ } from 'ramda';
 import xs, { Stream as S } from 'xstream';
 import delay from 'xstream/extra/delay';
 import sc from 'xstream/extra/sampleCombine';
 import { black, grays, white } from '../colors';
-import { cOppBoardX, cSelfIconY, dFullHeight, dFullWidth, dMsgInnerSep, dMsgStrokeWidth, fMsg, maxOppLambda, maxPayoff, minOppLambda, nPracticeTrials, nRealTrials, practiceDiscardTrials, practiceSelfTrials, realDiscardTrials, realSelfTrials, secondRatio, speedRatio } from '../config';
+import { cOppBoardX, cSelfIconY, dFullHeight, dFullWidth, dMsgInnerSep, dMsgStrokeWidth, fMsg, maxOppLambda, maxPayoff, minOppLambda, nPracticeTrials, nRealTrials, practiceDiscardTrials, practiceMemoryTrials, practiceSelfTrials, realDiscardTrials, realMemoryTrials, realSelfTrials, secondRatio, speedRatio } from '../config';
 import { CanvasElement, CanvasMouseEvent } from '../drivers/canvas';
 import { client } from '../drivers/client';
 import { kindIs, nextStage, randomUnif, strictR, Target } from '../utils';
 import { TargetName as AppTargetName } from './app';
 import { BoardConfig, calcPayoffs, generateConfig, PayoffReceiver } from './board';
 import { Button, State as ButtonState } from './button';
-import { EventIn as TrialEventIn, Stage as TrialStage, StageDoneEvent as TrialStageDoneEvent, stages as trialStages, State as TrialState, Trial } from './trial';
+import { EventIn as TrialEventIn, EventOut as TrialEventOut, Stage as TrialStage, stages as trialStages, State as TrialState, Trial } from './trial';
 import { Anchor, buildCallout, Direction } from './tutorial';
 
 type Stage = typeof stages[number];
@@ -24,7 +24,8 @@ export interface Props {
 export interface EventIn {
   kind: 'startGame';
 }
-interface TrialData {
+type TrialData = {
+  kind: 'normal';
   trialNumber: number;
   oppReceiver: PayoffReceiver;
   selfConfig: BoardConfig;
@@ -33,7 +34,12 @@ interface TrialData {
   oppLambda: number;
   actTime: number;
   reviewTime: number;
-}
+} | {
+  kind: 'memory';
+  trialNumber: number;
+  selfLambda: number;
+  oppLambda: number;
+};
 export interface State {
   trial?: TrialState;
   button?: ButtonState;
@@ -156,7 +162,13 @@ export function calcBonus(s: State): number {
 }
 
 function makeTrialData(s: State): TrialData {
-  return {
+  return s.trial!.stage === 'memory' ? {
+    kind: 'memory',
+    trialNumber: s.trialNumber,
+    selfLambda: s.trial!.selfBoard!.lambda!,
+    oppLambda: s.trial!.oppBoard!.lambda!
+  } : {
+    kind: 'normal',
     trialNumber: s.trialNumber,
     oppReceiver: getOppReceiver(s.stage, s.trialNumber),
     selfConfig: s.trial!.selfBoardConfig,
@@ -169,7 +181,7 @@ function makeTrialData(s: State): TrialData {
 }
 
 function getActTime(trial: number): number {
-  const minTime = trial === 0 ? 10 : max(20 - trial, 10);
+  const minTime = (trial === 1 ? 10 : max(20 - trial, 10)) + (includes(trial, realMemoryTrials) ? 5 : 0);
   return randomUnif(minTime, minTime + 5);
 }
 
@@ -216,26 +228,26 @@ export function Game(sources: Sources): Sinks {
   // intent 2
   const nextStage$ = xs.merge(
     button.event
-      .compose(sc(props$, state$))
-      .filter(([_, p, s]) => !includes(s.stage, ['practice', 'donePractice', 'real', 'doneReal'])
-        || s.stage === 'practice' && s.trialNumber === nPracticeTrials
-        || s.stage === 'real' && s.trialNumber === nRealTrials
+      .compose(sc(state$))
+      .filter(([_, s]) => !includes(s.stage, ['practice', 'donePractice', 'real', 'doneReal'])
+        || s.stage === 'practice' && s.trialNumber === nPracticeTrials && (!includes(s.trialNumber, practiceMemoryTrials) || s.trial!.stage === 'memory')
+        || s.stage === 'real' && s.trialNumber === nRealTrials && (!includes(s.trialNumber, realMemoryTrials) || s.trial!.stage === 'memory')
         || s.stage === 'donePractice' && client.kind !== 'preview')
-      .map(([_1, _2, s]) => nextStage(stages, s.stage)),
+      .map(([_, s]) => nextStage(stages, s.stage)),
     button.event
-      .compose(sc(props$, state$))
-      .filter(([_, p, s]) => s.stage === 'donePractice' && client.kind !== 'preview')
+      .compose(sc(state$))
+      .filter(([_, s]) => s.stage === 'donePractice' && client.kind !== 'preview')
       .map(_ => xs.of<Stage>('paired').compose(delay(randomUnif(minPairingTime, maxPairingTime) * 1000 / speedRatio)))
       .flatten()
   );
   const goToPreview$ = button.event
-    .compose(sc(props$, state$))
-    .filter(([_, p, s]) => s.stage === 'donePractice' && client.kind === 'preview')
+    .compose(sc(state$))
+    .filter(([_, s]) => s.stage === 'donePractice' && client.kind === 'preview')
     .mapTo<Stage>('preview');
 
-  const trialStageDone$ = xs.create<TrialStageDoneEvent>();
+  const trialStageDone$ = xs.create<TrialEventOut & { kind: 'stageDone'; }>();
   const oppAct$ = xs.create<number>();
-  const trialNextStage$: S<TrialStage> = xs.merge(
+  const trialSetStage$ = xs.merge(
     xs.merge(
       trialStageDone$
         .compose(sc(state$))
@@ -249,36 +261,51 @@ export function Game(sources: Sources): Sinks {
     ).map(e => nextStage(trialStages, e.stage)),
     nextStage$
       .filter(s => includes(s, ['practice', 'real']))
-      .mapTo('act' as const),
+      .mapTo<TrialStage>('act'),
     nextStage$
       .filter(s => includes(s, ['donePractice', 'doneReal']))
-      .mapTo('postReview' as const),
+      .mapTo<TrialStage>('postReview'),
     oppAct$
       .compose(sc(state$))
       .filter(([_, s]) => (s.trial as TrialState).stage === 'postAct')
-      .mapTo('showOpp' as const)
-      .compose(delay(1000 / speedRatio))
+      .mapTo<TrialStage>('showOpp')
+      .compose(delay(1000 / speedRatio)),
+    button.event
+      .compose(sc(state$))
+      .filter(([_, s]) => s.stage === 'practice' && includes(s.trialNumber, practiceMemoryTrials) && s.trial!.stage !== 'memory'
+        || s.stage === 'real' && includes(s.trialNumber, realMemoryTrials) && s.trial!.stage !== 'memory')
+      .mapTo<TrialStage>('memory')
+      .compose(delay(0))
   );
   oppAct$.imitate(xs.merge(
     // practice
-    trialNextStage$
+    trialSetStage$
       .compose(sc(state$))
       .filter(([ts, s]) => ts === 'act' && includes(s.stage, ['tutorialButton', 'practice']))
       .compose(delay(200))
       .map(_ => randomUnif(-2, 2)),
-    // paired
     xs.merge(
+      // paired
       nextStage$
         .filter(equals('paired'))
-        .map(_ => xs.of(null).compose(delay(getActTime(0) * 1000 / speedRatio)))
+        .map(_ => xs.of(getOppReceiver('real', 1)).compose(delay(getActTime(1) * 1000 / speedRatio)))
         .flatten(),
       // collected
       trialStageDone$
         .compose(sc(state$))
         .filter(([e, s]) => e.stage === 'collect' && s.stage === 'real' && s.trialNumber !== nRealTrials)
-        .map(([_, s]) => xs.of(null).compose(delay(getActTime(s.trialNumber + 1) * 1000 / speedRatio)))
+        .map(([_, s]) => xs.of(getOppReceiver('real', s.trialNumber + 1)).compose(delay(getActTime(s.trialNumber + 1) * 1000 / speedRatio)))
         .flatten()
-    ).map(_ => randomUnif(minOppLambda, maxOppLambda))
+    ).map(or => {
+      switch (or) {
+        case 'self':
+          return randomUnif(.8, 1.2);
+        case 'opp':
+          return randomUnif(minOppLambda, maxOppLambda);
+        case 'discard':
+          return randomUnif(-.1, .1);
+      }
+    })
   ));
   const trialOppAct$ = xs.merge(
     // oppAct
@@ -287,7 +314,7 @@ export function Game(sources: Sources): Sinks {
       .filter(([_, s]) => includes(s.trial?.stage, ['preAct', 'act', 'postAct']))
       .map(([l, _]) => l),
     // new trial
-    trialNextStage$
+    trialSetStage$
       .compose(sc(state$))
       .filter(([ts, s]) => ts === 'act' && s.oppLambda !== undefined)
       .map(([_, s]) => s.oppLambda as number)
@@ -299,8 +326,8 @@ export function Game(sources: Sources): Sinks {
     .filter(([_, s]) => s.stage === 'real');
   const nextTrial$ = button.event
     .compose(sc(state$))
-    .filter(([_, s]) => s.stage === 'practice' && s.trialNumber !== nPracticeTrials
-      || s.stage === 'real' && s.trialNumber !== nRealTrials)
+    .filter(([_, s]) => s.stage === 'practice' && s.trialNumber !== nPracticeTrials && (!includes(s.trialNumber, practiceMemoryTrials) || s.trial!.stage === 'memory')
+      || s.stage === 'real' && s.trialNumber !== nRealTrials && (!includes(s.trialNumber, realMemoryTrials) || s.trial!.stage === 'memory'))
     .compose(delay(0));
 
   const startReal$ = nextStage$
@@ -318,12 +345,12 @@ export function Game(sources: Sources): Sinks {
       oppReceiver: getOppReceiver(s.stage, s.trialNumber)
     })),
     event: xs.merge(
-      xs.merge(startGames$, startReal$, nextTrial$.compose(delay(0))).map(_ => ({
+      xs.merge(startGames$, startReal$, nextTrial$).map(_ => ({
         kind: 'newTrial',
         selfBoardConfig: generateConfig(),
         oppBoardConfig: generateConfig()
       })),
-      trialNextStage$.mapTo({ kind: 'nextStage' }),
+      trialSetStage$.map(stage => ({ kind: 'setStage', stage })),
       trialOppAct$,
       startReal$.mapTo({ kind: 'reset' })
     )
@@ -352,7 +379,7 @@ export function Game(sources: Sources): Sinks {
     nextStage$
       .filter(includes(__, ['tutorialButton', 'donePractice', 'paired', 'doneReal']))
       .map(stage => xs.of(null).compose(delay(((<Partial<Record<Stage, number>>>{
-        tutorialButton: 2,
+        tutorialButton: 1,
         donePractice: client.kind === 'mturk' ? 6 : 2,
         paired: 2,
         doneReal: client.kind === 'mturk' ? 6 : 2
@@ -371,6 +398,11 @@ export function Game(sources: Sources): Sinks {
     trialNumber: s.trialNumber + 1,
     readyForNext: false
   })));
+  const goToMemoryR$ = trialSetStage$
+    .filter(equals('memory'))
+    .mapTo<R<State>>(assoc('readyForNext', false));
+  const bothTouchedR$ = trial.event.filter(kindIs('bothTouched'))
+    .mapTo(strictR<State>(s => ({ ...s, readyForNext: s.trial!.stage === 'memory' ? true : s.readyForNext })));
   const addTotalR$ = trialStageDone$
     .compose(sc(state$))
     .filter(([ts, s]) => s.stage === 'real' && ts.stage === 'collect')
@@ -385,7 +417,7 @@ export function Game(sources: Sources): Sinks {
       };
     }));
   const oppActR$ = oppAct$.map(l => strictR<State>(assoc('oppLambda', l)));
-  const resetOppLambdaR$ = trialNextStage$
+  const resetOppLambdaR$ = trialSetStage$
     .filter(equals('collect'))
     .mapTo(strictR<State>(assoc('oppLambda', undefined)));
   const startRealR$ = startReal$.mapTo(strictR<State>(assoc('trialNumber', 1)));
@@ -466,13 +498,33 @@ export function Game(sources: Sources): Sinks {
         return [];
       }
     })();
-    return concat(roundCounter, message);
+    const memory: CanvasElement[] = s.trial!.stage === 'memory' ? [{
+      kind: 'text',
+      layer: 10,
+      x: 400,
+      y: 90,
+      text: dedent`
+        [b|**Memory Check**]
+        Please reproduce the locations
+        of the two handles.
+      `,
+      fontSize: fMsg,
+      shape: {
+        kind: 'rect',
+        stroke: black,
+        strokeWidth: dMsgStrokeWidth,
+        fill: white,
+        margin: dMsgInnerSep
+      }
+    }] : [];
+    return unnest([roundCounter, message, memory]);
   });
 
   const endGameE$ = endGame$.mapTo<EventOut>({ kind: 'endGame' });
 
   return {
-    state: xs.merge(initR$, changeStageR$, readyR$, saveTrialR$, nextTrialR$, addTotalR$, oppActR$, resetOppLambdaR$, startRealR$, bonusR$, endGameR$, <SRS>button.state, <SRS>trial.state),
+    state: xs.merge(initR$, changeStageR$, readyR$, saveTrialR$, nextTrialR$, goToMemoryR$, bothTouchedR$, addTotalR$,
+      oppActR$, resetOppLambdaR$, startRealR$, bonusR$, endGameR$, <SRS>button.state, <SRS>trial.state),
     canvas: xs.combine(canvas$, button.canvas, trial.canvas).map(flatten),
     event: endGameE$
   };

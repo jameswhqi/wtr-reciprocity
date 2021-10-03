@@ -14,10 +14,12 @@
 - Mturk
 - oppLambda = 1
 
-# 6
+# 6-8
 
 - Changes
   - Hide opponent's total
   - Add catch trials
-    - In which the opponent's payoff is discarded or both payoffs go to self
-    - Memory test
+    - In which the opponent's payoff is discarded or goes to self
+    - Memory checks
+- Mturk
+- oppLambda = 1, 0, -1

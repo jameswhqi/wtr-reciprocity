@@ -30,11 +30,13 @@ export const secondRatio = fast ? 10 : 1000;
 export const defaultFontFamily = '"Helvetica Neue", Helvetica, Arial, sans-serif';
 
 export const nPracticeTrials = fast ? 1 : 5;
-export const practiceDiscardTrials = fast ? [] : [3];
-export const practiceSelfTrials = fast ? [] : [4];
+export const practiceDiscardTrials = fast ? [] : [2];
+export const practiceSelfTrials = fast ? [] : [3];
+export const practiceMemoryTrials = fast ? [] : [4];
 export const nRealTrials = fast ? 5 : 20;
-export const realDiscardTrials = fast ? [3] : [3, 12];
-export const realSelfTrials = fast ? [4] : [6, 15];
+export const realDiscardTrials = fast ? [2] : [9, 15];
+export const realSelfTrials = fast ? [3] : [3, 13];
+export const realMemoryTrials = fast ? [4] : [5, 17];
 
 export const maxPayoff = 10;
 

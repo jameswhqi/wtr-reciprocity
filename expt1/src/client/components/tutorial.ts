@@ -184,7 +184,8 @@ const steps: Step[] =
     name: 'curve',
     trialShow: ['selfIcon', 'selfTotal', 'oppIcon', 'oppTotal', 'selfBoard', 'selfSlider'],
     trialEventStart: {
-      kind: 'nextStage'
+      kind: 'setStage',
+      stage: 'act'
     },
     message: {
       kind: 'callout',
@@ -297,7 +298,8 @@ const steps: Step[] =
       predicate: kindIs('stageDone')
     },
     trialEventEnd: {
-      kind: 'nextStage'
+      kind: 'setStage',
+      stage: 'postAct'
     }
   }, {
     name: 'oppBoard',
@@ -319,7 +321,7 @@ const steps: Step[] =
     },
     proceed: {
       kind: 'wait',
-      duration: 5
+      duration: 4
     }
   }, {
     name: 'oppThinking',
@@ -365,7 +367,8 @@ const steps: Step[] =
     name: 'oppChoose',
     trialShow: 'all',
     trialEventStart: {
-      kind: 'nextStage'
+      kind: 'setStage',
+      stage: 'showOpp'
     },
     message: {
       kind: 'callout',
@@ -384,13 +387,14 @@ const steps: Step[] =
     },
     proceed: {
       kind: 'wait',
-      duration: 6
+      duration: 5
     }
   }, {
     name: 'collect',
     trialShow: 'all',
     trialEventStart: {
-      kind: 'nextStage'
+      kind: 'setStage',
+      stage: 'collect'
     },
     message: {
       kind: 'message',
@@ -413,7 +417,8 @@ const steps: Step[] =
     name: 'review',
     trialShow: 'all',
     trialEventStart: {
-      kind: 'nextStage'
+      kind: 'setStage',
+      stage: 'review'
     },
     message: {
       kind: 'callout',
@@ -439,7 +444,8 @@ const steps: Step[] =
     name: 'bonus',
     trialShow: 'all',
     trialEventStart: {
-      kind: 'nextStage'
+      kind: 'setStage',
+      stage: 'postReview'
     },
     message: {
       kind: 'callout',
@@ -463,7 +469,7 @@ const steps: Step[] =
     },
     proceed: {
       kind: 'wait',
-      duration: 6
+      duration: 5
     }
   }, {
     name: 'recap',
@@ -510,6 +516,24 @@ const steps: Step[] =
       duration: 6
     }
   }, {
+    name: 'special',
+    trialShow: 'all',
+    message: {
+      kind: 'message',
+      x: dFullWidth / 2,
+      y: dFullHeight / 2 - 50,
+      text: dedent`
+        There are 3 types of [b|special rounds] interspersed among all the rounds,
+        which are explained in the next 3 steps of this tutorial.
+      `,
+      anchor: 'c',
+      dim: true
+    },
+    proceed: {
+      kind: 'wait',
+      duration: 2
+    }
+  }, {
     name: 'discardOpp',
     trialShow: 'all',
     oppReceiver: 'discard',
@@ -518,7 +542,8 @@ const steps: Step[] =
       targetName: 'selfOppBarNumber',
       sep: 10,
       text: dedent`
-        In some rounds, the color of the “vertical” reward will be [b discard|gray],
+        In the first type of special rounds,
+        the color of the “vertical” reward will be [b discard|gray],
         which indicates that this reward will be [b|discarded]
         instead of being given to [opp|Blue].
         The same thing will happen to [opp|Blue’s board].
@@ -528,7 +553,7 @@ const steps: Step[] =
     },
     proceed: {
       kind: 'wait',
-      duration: 3
+      duration: 5
     }
   }, {
     name: 'oppToSelf',
@@ -539,7 +564,8 @@ const steps: Step[] =
       targetName: 'selfOppBarNumber',
       sep: 10,
       text: dedent`
-        In some other rounds, the color of “vertical” reward will be [b self|red],
+        In the second type of special rounds,
+        the color of the “vertical” reward will be [b self|red],
         which indicates that this reward will be given to [b self|you] instead of [opp|Blue],
         in addition to the usual “horizontal” reward.
         The same thing will happen to [opp|Blue’s board].
@@ -549,7 +575,52 @@ const steps: Step[] =
     },
     proceed: {
       kind: 'wait',
-      duration: 4
+      duration: 5
+    }
+  }, {
+    name: 'memory1',
+    trialShow: 'all',
+    message: {
+      kind: 'message',
+      x: dFullWidth / 2,
+      y: dFullHeight / 2 - 50,
+      text: dedent`
+        In the third type of special rounds (called [b|Memory Checks]), after you click “Next round”,
+        you will be asked to reproduce the locations of [self|your handle] and [opp|Blue’s handle] on the sliders.
+        The reproduced locations don’t have to be exactly the same as the true locations,
+        but try to be as close as possible to what you remember.
+        [b|We reserve the right to reject your data if the errors in the reproductions are too large.]
+        [opp|Blue] has the same [b|Memory Check] rounds as you.
+      `,
+      anchor: 'c',
+      dim: true
+    },
+    proceed: {
+      kind: 'wait',
+      duration: 8
+    }
+  }, {
+    name: 'memory2',
+    trialShow: 'all',
+    trialEventStart: {
+      kind: 'setStage',
+      stage: 'memory'
+    },
+    message: {
+      kind: 'message',
+      x: 400,
+      y: 100,
+      text: dedent`
+        Now try to reproduce the locations
+        of the two handles you just saw.
+        (This one doesn’t count.)
+      `,
+      anchor: 'c',
+      dim: false
+    },
+    proceed: {
+      kind: 'event',
+      predicate: kindIs('bothTouched')
     }
   }];
 

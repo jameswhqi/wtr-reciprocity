@@ -168,6 +168,7 @@ export function App(sources: Sources): Sinks {
         client,
         config: { minOppLambda, maxOppLambda },
         trials: s.game!.history,
+        bonus: s.game!.bonus,
         debrief: v.values
       };
       console.log(data);

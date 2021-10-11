@@ -113,7 +113,7 @@ const messages: Partial<Record<Stage, Message | Callout>> = {
     text: always(dedent`
       Good job!
       Now you will be paired with a human to play the real game.
-    ` + (client.kind === 'mturk' ? dedent`
+    ` + (includes(client.kind, ['mturk', 'prolific']) ? dedent`
       \nAs a reminder, at the end of the experiment,
       you will be given a bonus according to your total reward.
       The higher your total reward is, the higher your bonus will be.
@@ -136,12 +136,12 @@ const messages: Partial<Record<Stage, Message | Callout>> = {
   },
   doneReal: {
     kind: 'message',
-    text: s => 'Congratulations! You have completed the game.' + (client.kind !== 'mturk' || s.bonus === undefined ? '' : s.bonus === 0 ? dedent`
+    text: s => 'Congratulations! You have completed the game.' + (!includes(client.kind, ['mturk', 'prolific']) || s.bonus === undefined ? '' : s.bonus === 0 ? dedent`
       \nUnfortunately, you didn’t receive a bonus
       because your total reward is too low.
     ` : dedent`
       \nYour bonus for the total reward is [b|$${s.bonus.toFixed(2)}].
-      It will be sent to your MTurk account
+      It will be sent to your account
       after the experiment finishes.
     `)
   },
@@ -380,9 +380,9 @@ export function Game(sources: Sources): Sinks {
       .filter(includes(__, ['tutorialButton', 'donePractice', 'paired', 'doneReal']))
       .map(stage => xs.of(null).compose(delay(((<Partial<Record<Stage, number>>>{
         tutorialButton: 1,
-        donePractice: client.kind === 'mturk' ? 6 : 2,
+        donePractice: includes(client.kind, ['mturk', 'prolific']) ? 5 : 2,
         paired: 2,
-        doneReal: client.kind === 'mturk' ? 6 : 2
+        doneReal: includes(client.kind, ['mturk', 'prolific']) ? 4 : 1
       })[stage] as number) * secondRatio)))
       .flatten(),
     trialStageDone$
@@ -407,13 +407,20 @@ export function Game(sources: Sources): Sinks {
     .compose(sc(state$))
     .filter(([ts, s]) => s.stage === 'real' && ts.stage === 'collect')
     .mapTo(strictR<State>(s => {
-      const selfMax = calcPayoffs(s.trial!.selfBoardConfig, 0).payoffSelf * maxPayoff;
-      const selfMin = calcPayoffs(s.trial!.selfBoardConfig, 1.2).payoffSelf * maxPayoff;
-      const opp = calcPayoffs(s.trial!.oppBoardConfig, s.trial!.oppLambda!).payoffOpp * maxPayoff;
+      const oppReceiver = getOppReceiver(s.stage, s.trialNumber);
+      const selfMax = oppReceiver === 'self'
+        ? (ps => ps.payoffSelf + ps.payoffOpp)(calcPayoffs(s.trial!.selfBoardConfig, 1))
+        : calcPayoffs(s.trial!.selfBoardConfig, 0).payoffSelf;
+      const selfMin = oppReceiver === 'self'
+        ? (ps => ps.payoffSelf + ps.payoffOpp)(calcPayoffs(s.trial!.selfBoardConfig, 0))
+        : calcPayoffs(s.trial!.selfBoardConfig, 1.2).payoffSelf;
+      const opp = oppReceiver === 'opp'
+        ? calcPayoffs(s.trial!.oppBoardConfig, s.trial!.oppLambda!).payoffOpp
+        : 0;
       return {
         ...s,
-        minTotal: s.minTotal + selfMin + opp,
-        maxTotal: s.maxTotal + selfMax + opp
+        minTotal: s.minTotal + (selfMin + opp) * maxPayoff,
+        maxTotal: s.maxTotal + (selfMax + opp) * maxPayoff
       };
     }));
   const oppActR$ = oppAct$.map(l => strictR<State>(assoc('oppLambda', l)));

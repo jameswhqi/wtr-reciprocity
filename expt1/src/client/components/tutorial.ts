@@ -1,7 +1,7 @@
 import isolate from '@cycle/isolate';
 import { Reducer as R, StateSource } from '@cycle/state';
 import dedent from 'dedent';
-import { always, concat, find, flatten, map, propEq, unnest, update } from 'ramda';
+import { always, concat, find, flatten, includes, map, propEq, unnest, update } from 'ramda';
 import xs, { Stream as S } from 'xstream';
 import delay from 'xstream/extra/delay';
 import sc from 'xstream/extra/sampleCombine';
@@ -451,7 +451,7 @@ const steps: Step[] =
       kind: 'callout',
       targetName: 'selfTotal',
       sep: 0,
-      text: client.kind === 'mturk' ? dedent`
+      text: includes(client.kind, ['mturk', 'prolific']) ? dedent`
         At the end of the experiment,
         you will be given a [b|real monetary bonus]
         according to your total reward

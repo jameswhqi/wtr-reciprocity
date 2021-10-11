@@ -1,8 +1,12 @@
 import { style } from 'typestyle';
 import { blues, grays, reds } from './colors';
 
+// sona
 export const experimentId = '2160';
 export const creditToken = '083dbb8cd3984af1855ba65dd86c283b';
+
+// prolific
+// export const prolificCc = '12E54064';
 
 export const params = new URLSearchParams(window.location.search);
 

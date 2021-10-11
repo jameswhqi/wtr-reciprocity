@@ -23,3 +23,13 @@
     - Memory checks
 - Mturk
 - oppLambda = 1, 0, -1
+
+# 9-11
+
+- Sona
+- oppLambda = 1, 0, -1
+
+# 12-14
+
+- Prolific
+- oppLambda = 1, 0, -1

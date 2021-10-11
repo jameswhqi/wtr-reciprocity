@@ -1,7 +1,8 @@
+import { includes } from 'ramda';
 import { Stream } from 'xstream';
 import { creditToken, experimentId, params } from '../config';
 
-export type Client = OtherClient | MTurkClient | SonaClient;
+export type Client = OtherClient | MTurkClient | SonaClient | ProlificClient;
 interface OtherClient {
   kind: 'preview' | 'visitor';
   workerId: string;
@@ -16,6 +17,13 @@ interface SonaClient {
   kind: 'sona';
   surveyCode: string;
   workerId: string;
+}
+interface ProlificClient {
+  kind: 'prolific';
+  workerId: string;
+  studyId: string;
+  sessionId: string;
+  completionCode: string;
 }
 
 interface SubmitAction {
@@ -41,6 +49,8 @@ const clientKind = (() => {
       }
     case 'sona':
       return 'sona';
+    case 'prolific':
+      return 'prolific';
     default:
       return 'visitor';
   }
@@ -51,7 +61,7 @@ const popupListener = function (e: BeforeUnloadEvent) {
   e.returnValue = msg;
   return msg;
 };
-if (clientKind === 'mturk') {
+if (includes(clientKind, ['mturk', 'sona', 'prolific'])) {
   window.addEventListener('beforeunload', popupListener);
 }
 export const client = ((): Client => {
@@ -71,6 +81,14 @@ export const client = ((): Client => {
         workerId: 'sona-' + surveyCode
       };
     }
+    case 'prolific':
+      return {
+        kind: 'prolific',
+        workerId: 'prolific-' + params.get('prolificPid')!,
+        studyId: params.get('studyId')!,
+        sessionId: params.get('sessionId')!,
+        completionCode: Math.random().toString(36).substr(2, 8)
+      };
     default:
       return {
         kind: clientKind,
@@ -116,12 +134,23 @@ export function ClientDriver(action$: Stream<Action>): void {
               form.submit();
               break;
             }
+            case 'prolific': {
+              const form = document.createElement('form');
+              form.method = 'GET';
+              form.action = 'https://app.prolific.co/submissions/complete';
+
+              form.appendChild(addHidden('cc', client.completionCode));
+
+              document.body.appendChild(form);
+              form.submit();
+              break;
+            }
             default:
               window.location.href = "https://www.evullab.org";
           }
           break;
         case 'stopPopup':
-          if (clientKind === 'mturk') {
+          if (includes(client.kind, ['mturk', 'prolific'])) {
             window.removeEventListener('beforeunload', popupListener);
           }
       }

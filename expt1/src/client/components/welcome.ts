@@ -123,7 +123,7 @@ export function Welcome(sources: Sources): Sinks {
         span({ style: { fontWeight: 'bold' } }, 'mouse/trackpad'),
         ' to complete this experiment for the best experience.'
       ]),
-      p('If you previously failed to submit the HIT, please email us at evullab@gmail.com.'),
+      client.kind === 'mturk' ? p('If you previously failed to submit the HIT, please email us at evullab@gmail.com.') : null,
       p('You will play a multi-round game with another participant. You will start with a tutorial, and then play the game.'),
       div({ props: { className: sButtonRow } }, [
         button({ props: { className: sButton } }, 'OK')

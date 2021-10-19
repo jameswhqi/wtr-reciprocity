@@ -150,7 +150,7 @@ export function ClientDriver(action$: Stream<Action>): void {
           }
           break;
         case 'stopPopup':
-          if (includes(client.kind, ['mturk', 'prolific'])) {
+          if (includes(client.kind, ['mturk', 'sona', 'prolific'])) {
             window.removeEventListener('beforeunload', popupListener);
           }
       }

@@ -26,7 +26,7 @@
 
 # 9-11
 
-- Sona
+- Sona 21EV08
 - oppLambda = 1, 0, -1
 
 # 12-14

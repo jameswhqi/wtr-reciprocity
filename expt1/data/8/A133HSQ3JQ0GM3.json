@@ -1,0 +1,419 @@
+{
+    "client": {
+        "kind": "mturk",
+        "workerId": "A133HSQ3JQ0GM3",
+        "assignmentId": "3P1L2B7AD1PFB7FJMFLIK1J40VQLOS",
+        "turkSubmitTo": "https:\/\/www.mturk.com\/mturk\/externalSubmit"
+    },
+    "config": {
+        "minOppLambda": -1.25,
+        "maxOppLambda": -0.75
+    },
+    "trials": [
+        {
+            "kind": "normal",
+            "trialNumber": 1,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.28507081874006734,
+                "vertexSelf": 0.6881052325886728,
+                "vertexOpp": 0.607376470459686
+            },
+            "selfLambda": 0.158722170443847,
+            "oppConfig": {
+                "scale": 0.17715879059577483,
+                "vertexSelf": 0.3134678053436052,
+                "vertexOpp": 0.18282473566394733
+            },
+            "oppLambda": -1.227060386368476,
+            "actTime": 3.575,
+            "reviewTime": 1.208
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 2,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.12456095947262168,
+                "vertexSelf": 0.4797069093158127,
+                "vertexOpp": 0.6352317526831189
+            },
+            "selfLambda": -0.2445670416735487,
+            "oppConfig": {
+                "scale": 0.3100232749557116,
+                "vertexSelf": 0.37186303544005206,
+                "vertexOpp": 0.5471080980490074
+            },
+            "oppLambda": -0.865225893374797,
+            "actTime": 9.627,
+            "reviewTime": 29.579
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 3,
+            "oppReceiver": "self",
+            "selfConfig": {
+                "scale": 0.43738624926662506,
+                "vertexSelf": 0.7993985311821267,
+                "vertexOpp": 0.4823306794155587
+            },
+            "selfLambda": -0.07162553818349814,
+            "oppConfig": {
+                "scale": 0.28957779520270377,
+                "vertexSelf": 0.4179365706577397,
+                "vertexOpp": 0.44287907947453653
+            },
+            "oppLambda": 1.0392965040243034,
+            "actTime": 3.474,
+            "reviewTime": 21.306
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 4,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.14602213976582484,
+                "vertexSelf": 0.4447871836743851,
+                "vertexOpp": 0.7292419453588568
+            },
+            "selfLambda": -0.12658279591955138,
+            "oppConfig": {
+                "scale": 0.3278974582791825,
+                "vertexSelf": 0.687089622113376,
+                "vertexOpp": 0.6162710421978899
+            },
+            "oppLambda": -1.2360841349444507,
+            "actTime": 2.513,
+            "reviewTime": 0.757
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 5,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.35668915351523767,
+                "vertexSelf": 0.42608120292678253,
+                "vertexOpp": 0.4856347884040386
+            },
+            "selfLambda": -0.06897577315975086,
+            "oppConfig": {
+                "scale": 0.1863378703535249,
+                "vertexSelf": 0.7205758065573287,
+                "vertexOpp": 0.24835295825307518
+            },
+            "oppLambda": -1.042835661375265,
+            "actTime": 2.387,
+            "reviewTime": 19.596
+        },
+        {
+            "kind": "memory",
+            "trialNumber": 5,
+            "selfLambda": 0.061857099684174986,
+            "oppLambda": 3.917404168973364
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 6,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.4462161985722961,
+                "vertexSelf": 0.6481331162650181,
+                "vertexOpp": 0.48806579692770635
+            },
+            "selfLambda": -0.02121152754882008,
+            "oppConfig": {
+                "scale": 0.3643150135692934,
+                "vertexSelf": 0.6356416403219002,
+                "vertexOpp": 0.4605190036916568
+            },
+            "oppLambda": -1.1416632325261882,
+            "actTime": 9.232,
+            "reviewTime": 0.737
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 7,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.38732390920578896,
+                "vertexSelf": 0.46047828017835724,
+                "vertexOpp": 0.5270685955130342
+            },
+            "selfLambda": 0.03234883089528362,
+            "oppConfig": {
+                "scale": 0.35307775174073475,
+                "vertexSelf": 0.531342308863388,
+                "vertexOpp": 0.6118489787656981
+            },
+            "oppLambda": -1.0894657993243981,
+            "actTime": 4.561,
+            "reviewTime": 10.4
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 8,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.1461574460739489,
+                "vertexSelf": 0.7112129858743254,
+                "vertexOpp": 0.7726923039875824
+            },
+            "selfLambda": -0.08245405872605303,
+            "oppConfig": {
+                "scale": 0.2796017753420966,
+                "vertexSelf": 0.6628808232624449,
+                "vertexOpp": 0.53791927397741
+            },
+            "oppLambda": -0.9337814599698765,
+            "actTime": 7.039,
+            "reviewTime": 0.753
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 9,
+            "oppReceiver": "discard",
+            "selfConfig": {
+                "scale": 0.39095016013775175,
+                "vertexSelf": 0.39292933647960954,
+                "vertexOpp": 0.47907769852821375
+            },
+            "selfLambda": -0.04643916004543911,
+            "oppConfig": {
+                "scale": 0.32414240405676314,
+                "vertexSelf": 0.8063133465264256,
+                "vertexOpp": 0.5948700989081721
+            },
+            "oppLambda": -0.09897168995833248,
+            "actTime": 5.743,
+            "reviewTime": 3.396
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 10,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.22749691406663067,
+                "vertexSelf": 0.4576065228172791,
+                "vertexOpp": 0.4701628423713018
+            },
+            "selfLambda": -0.14795373473100698,
+            "oppConfig": {
+                "scale": 0.3264950121354671,
+                "vertexSelf": 0.7210425752021322,
+                "vertexOpp": 0.5600179362233244
+            },
+            "oppLambda": -0.9049220361928848,
+            "actTime": 4.824,
+            "reviewTime": 26.703
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 11,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.37596442179771994,
+                "vertexSelf": 0.45703613065108917,
+                "vertexOpp": 0.4273747332574428
+            },
+            "selfLambda": 0.06716202922706328,
+            "oppConfig": {
+                "scale": 0.33186085227330586,
+                "vertexSelf": 0.4097591103114795,
+                "vertexOpp": 0.6171114250222307
+            },
+            "oppLambda": -1.1719839935744225,
+            "actTime": 2.515,
+            "reviewTime": 31.848
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 12,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.1935839642019621,
+                "vertexSelf": 0.5199370406847048,
+                "vertexOpp": 0.7172805273727393
+            },
+            "selfLambda": 0.06253416687220366,
+            "oppConfig": {
+                "scale": 0.1756004596565564,
+                "vertexSelf": 0.3253713207011433,
+                "vertexOpp": 0.30047387547088744
+            },
+            "oppLambda": -1.1067354621234924,
+            "actTime": 4.468,
+            "reviewTime": 0.674
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 13,
+            "oppReceiver": "self",
+            "selfConfig": {
+                "scale": 0.4367751920815378,
+                "vertexSelf": 0.9560822198012774,
+                "vertexOpp": 0.4960294457327653
+            },
+            "selfLambda": 0.018181226128307512,
+            "oppConfig": {
+                "scale": 0.3406449321634841,
+                "vertexSelf": 0.8708778863572292,
+                "vertexOpp": 0.656946475569273
+            },
+            "oppLambda": 1.1085709077676458,
+            "actTime": 2.76,
+            "reviewTime": 1.198
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 14,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.45396768173458213,
+                "vertexSelf": 0.6940101814479288,
+                "vertexOpp": 0.4952034802259905
+            },
+            "selfLambda": -0.03760978546624797,
+            "oppConfig": {
+                "scale": 0.3522692030879576,
+                "vertexSelf": 0.5404380091187293,
+                "vertexOpp": 0.3678516966267319
+            },
+            "oppLambda": -0.7545725865144406,
+            "actTime": 2.124,
+            "reviewTime": 2.843
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 15,
+            "oppReceiver": "discard",
+            "selfConfig": {
+                "scale": 0.44920317867221926,
+                "vertexSelf": 0.8480993831759677,
+                "vertexOpp": 0.5466223080122645
+            },
+            "selfLambda": 0.07440297003446968,
+            "oppConfig": {
+                "scale": 0.10942646452827463,
+                "vertexSelf": 0.9534239814423595,
+                "vertexOpp": 0.8578861857061394
+            },
+            "oppLambda": -0.01442240678035063,
+            "actTime": 4.553,
+            "reviewTime": 8.17
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 16,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.17181018609377857,
+                "vertexSelf": 0.6927327544063848,
+                "vertexOpp": 0.20053774387650425
+            },
+            "selfLambda": 0.22655532324343955,
+            "oppConfig": {
+                "scale": 0.22727775485565183,
+                "vertexSelf": 0.5239109580031791,
+                "vertexOpp": 0.6479776344706019
+            },
+            "oppLambda": -0.9106687282826722,
+            "actTime": 8.24,
+            "reviewTime": 14.329
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 17,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.13346095181603268,
+                "vertexSelf": 0.8502133925789679,
+                "vertexOpp": 0.2549625420072067
+            },
+            "selfLambda": 0.375202748850553,
+            "oppConfig": {
+                "scale": 0.38901864311853074,
+                "vertexSelf": 0.8996859445866762,
+                "vertexOpp": 0.48065899784118016
+            },
+            "oppLambda": -1.1415129574477105,
+            "actTime": 2.595,
+            "reviewTime": 0.732
+        },
+        {
+            "kind": "memory",
+            "trialNumber": 17,
+            "selfLambda": 0.275298371188744,
+            "oppLambda": 2.6357314466080513
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 18,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.11484641268084489,
+                "vertexSelf": 0.9809312083120807,
+                "vertexOpp": 0.21472039227304052
+            },
+            "selfLambda": 0.26608767954156504,
+            "oppConfig": {
+                "scale": 0.4155259167095604,
+                "vertexSelf": 0.43726714463619415,
+                "vertexOpp": 0.4359357620014082
+            },
+            "oppLambda": -1.2081077152076178,
+            "actTime": 4.714,
+            "reviewTime": 8.409
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 19,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.21972067581536764,
+                "vertexSelf": 0.3621294449953853,
+                "vertexOpp": 0.6256889393110946
+            },
+            "selfLambda": -0.17314959162434412,
+            "oppConfig": {
+                "scale": 0.21566829045272212,
+                "vertexSelf": 0.6396993294238384,
+                "vertexOpp": 0.38684157528704577
+            },
+            "oppLambda": -1.1632846046578336,
+            "actTime": 5.756,
+            "reviewTime": 7.462
+        },
+        {
+            "kind": "normal",
+            "trialNumber": 20,
+            "oppReceiver": "opp",
+            "selfConfig": {
+                "scale": 0.1363704014998005,
+                "vertexSelf": 0.5204654826084563,
+                "vertexOpp": 0.5926972556691846
+            },
+            "selfLambda": 0.20487453059969898,
+            "oppConfig": {
+                "scale": 0.1875826968562616,
+                "vertexSelf": 0.7857112327235106,
+                "vertexOpp": 0.6719426654123953
+            },
+            "oppLambda": -0.8869778653991373,
+            "actTime": 2.833,
+            "reviewTime": 1.033
+        }
+    ],
+    "bonus": 0.87,
+    "debrief": {
+        "selfToOpp": 3,
+        "oppToSelf": 1,
+        "adjust": "n",
+        "adjustHow": "",
+        "noAdjustWhy": "nothing",
+        "purpose": "nice",
+        "confusing": "n",
+        "confusingText": "",
+        "technical": "n",
+        "technicalText": ""
+    }
+}

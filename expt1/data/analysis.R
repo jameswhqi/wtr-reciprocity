@@ -15,6 +15,10 @@ df1 <- map_dfr(c("2", "3", "4"), function(batch) {
 })
 
 df1 %>%
+  ggplot(aes(batch, selfLambda)) +
+  stat_summary()
+
+df1 %>%
   filter(batch == "4") %>%
   ggplot(aes(trialNumber, selfLambda, color = id)) +
   geom_line()
@@ -91,3 +95,58 @@ df1 %>%
   ggplot(aes(`1`, `2`)) +
   geom_point() +
   geom_abline(slope = 1)
+
+# catch trials comparison across platforms ----
+df10 <- map_dfr(6:14, function(batch) {
+  map_dfr(list.files(as.character(batch)), function(file) {
+    cat(file)
+    json <- read_json(paste0(batch, "/", file))
+    selfErrors <- tibble(
+      kind = "self",
+      error = map_dbl(keep(json$trials, ~ .$kind == "normal" && .$oppReceiver == "self"), ~ abs(.$selfLambda - 1))
+    )
+    discardErrors <- tibble(
+      kind = "discard",
+      error = map_dbl(keep(json$trials, ~ .$kind == "normal" && .$oppReceiver == "discard"), ~ abs(.$selfLambda))
+    )
+
+    normalTrials <- keep(json$trials, ~ .$kind == "normal")
+    memoryTrials <- keep(json$trials, ~ .$kind == "memory")
+    memoryErrors <- simplify_all(transpose(map(memoryTrials, function(trial) {
+      prevTrial <- detect(normalTrials, ~ .$trialNumber == trial$trialNumber)
+      list(
+        self = abs(trial$selfLambda - prevTrial$selfLambda),
+        opp = abs(trial$oppLambda - prevTrial$oppLambda)
+      )
+    })))
+    memorySelfErrors <- tibble(
+      kind = "memorySelf",
+      error = memoryErrors$self
+    )
+    memoryOppErrors <- tibble(
+      kind = "memoryOpp",
+      error = memoryErrors$opp
+    )
+
+    bind_rows(
+      selfErrors,
+      discardErrors,
+      memorySelfErrors,
+      memoryOppErrors
+    ) %>%
+      mutate(
+        batch = batch,
+        id = json$client$workerId,
+        oppLambda = mean(c(json$config$minOppLambda, json$config$maxOppLambda)),
+        platform = case_when(
+          batch <= 8 ~ "mturk",
+          batch <= 11 ~ "sona",
+          T ~ "prolific"
+        )
+      )
+  })
+})
+df10 %>%
+  ggplot(aes(kind, error, color = platform)) +
+  geom_point(position = position_dodge(width = .5), alpha = .1) +
+  stat_summary(position = position_dodge(width = .5))

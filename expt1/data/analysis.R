@@ -171,7 +171,8 @@ df11 <- expand_grid(
   platform = unique(df10$platform)
 ) %>%
   rowwise() %>%
-  mutate(getError(kind, platform))
+  mutate(getError(kind, platform)) %>%
+  mutate(kind = factor(kind, levels = c("discard", "self", "memorySelf", "memoryOpp")))
 df11 %>%
   ggplot(aes(kind, errorMean, color = platform, ymin = errorMean - errorSe, ymax = errorMean + errorSe)) +
   geom_bar(stat = "identity", position = position_dodge(width = .6), fill = "white", width = .5) +
@@ -224,6 +225,9 @@ df20 <- map_dfr(6:14, function(batch) {
       keep(json$trials, ~ .$kind == "normal" && .$oppReceiver == "opp"),
       ~ as_tibble(.x[c("trialNumber", "selfLambda", "actTime", "reviewTime")]) %>%
         mutate(
+          selfScale = .x$selfConfig$scale,
+          selfVertexSelf = .x$selfConfig$vertexSelf,
+          selfVertexOpp = .x$selfConfig$vertexOpp,
           oppScale = .x$oppConfig$scale,
           oppVertexSelf = .x$oppConfig$vertexSelf,
           oppVertexOpp = .x$oppConfig$vertexOpp
@@ -239,7 +243,8 @@ df20 <- map_dfr(6:14, function(batch) {
           batch <= 8 ~ "mturk",
           batch <= 11 ~ "sona",
           T ~ "prolific"
-        )
+        ),
+        adjust = json$debrief$adjust
       )
   })
 })
@@ -256,10 +261,7 @@ df21 <- df20 %>%
 df20 %>%
   ggplot(aes(as.factor(oppLambda), selfLambda)) +
   geom_linerange(stat = "summary", size = 2) +
-  labs(x = "Opponent lambda", y = "Participant's lambda toward opponent")
-ggsave("lambda1.pdf", width = 4, height = 4)
-
-df20 %>%
+  df20 %>%
   ggplot(aes(oppLambda, selfLambda, color = platform)) +
   stat_summary()
 
@@ -274,8 +276,12 @@ df20 %>%
   stat_summary(position = position_dodge(width = .5))
 
 df20 %>%
+  filter(adjust == "y") %>%
+  group_by(id, oppLambda, oppToSelf) %>%
+  summarize() %>%
   ggplot(aes(oppLambda, oppToSelf)) +
   stat_summary()
+geom_jitter(height = 0, width = .2)
 
 # 1st to 2nd trial ----
 df20 %>%
@@ -299,6 +305,7 @@ debrief <- map_dfr(6:14, function(batch) {
       mutate(
         batch = batch,
         id = json$client$workerId,
+        oppLambda = mean(c(json$config$minOppLambda, json$config$maxOppLambda)),
         platform = case_when(
           batch <= 8 ~ "mturk",
           batch <= 11 ~ "sona",
@@ -309,7 +316,12 @@ debrief <- map_dfr(6:14, function(batch) {
 })
 debrief %>%
   filter(adjust == "n") %>%
+  mutate(noAdjustWhy = paste(oppLambda, noAdjustWhy)) %>%
   pull(noAdjustWhy)
+debrief %>%
+  filter(adjust == "y") %>%
+  mutate(adjustHow = paste(oppLambda, adjustHow)) %>%
+  pull(adjustHow)
 debrief %>%
   filter(str_length(purpose) > 20) %>%
   pull(purpose)
@@ -324,30 +336,47 @@ calcPayoffs <- function(scale, vertexSelf, vertexOpp, lambda) {
 shift <- function(v) c(NA, v[1:(length(v) - 1)])
 df22 <- df20 %>%
   rowwise() %>%
-  mutate(calcPayoffs(oppScale, oppVertexSelf, oppVertexOpp, selfLambda)) %>%
+  mutate(calcPayoffs(selfScale, selfVertexSelf, selfVertexOpp, selfLambda)) %>%
+  rename(selfPayoffSelf = payoffSelf, selfPayoffOpp = payoffOpp) %>%
+  mutate(calcPayoffs(oppScale, oppVertexSelf, oppVertexOpp, oppLambda)) %>%
+  rename(oppPayoffSelf = payoffSelf, oppPayoffOpp = payoffOpp) %>%
   group_by(id) %>%
-  mutate(prevDiff = shift(payoffOpp - payoffSelf)) %>%
-  drop_na(prevDiff)
+  mutate(
+    selfDiff = selfPayoffOpp - selfPayoffSelf,
+    oppPrevDiff = shift(oppPayoffOpp - oppPayoffSelf)
+  ) %>%
+  drop_na(oppPrevDiff)
 
 df22 %>%
-  ggplot(aes(prevDiff, selfLambda)) +
+  ggplot(aes(oppPrevDiff, selfLambda)) +
   geom_point(alpha = .1) +
   geom_smooth(method = "lm") +
   facet_wrap(vars(oppLambda), labeller = function(labels) {
-    labels %>% mutate(oppLambda = paste0("Opponent lambda = ", oppLambda))
+    labels %>% mutate(oppLambda = paste0("Opp lambda = ", oppLambda))
   }) +
   scale_y_continuous(breaks = seq(-10, 10, 1)) +
   labs(x = "Opponent's payoff difference in previous round", y = "Participant's lambda toward opponent in current round")
-ggsave("diff.pdf", width = 6, height = 6)
+ggsave("diff.pdf", width = 6, height = 4)
+
+df22 %>%
+  ggplot(aes(oppPrevDiff, selfDiff)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm") +
+  facet_wrap(vars(oppLambda))
 
 # mixed-effects model ----
-model1 <- lmer(selfLambda ~ oppLambda + prevDiff + (prevDiff | id), df22)
+model1 <- lmer(selfLambda ~ oppLambda + (1 | id), df22)
 summary(model1)
-anova(model)
+model2 <- lmer(selfLambda ~ oppLambda + (1 | id), df22 %>% filter(adjust == "y"))
+summary(model2)
+model3 <- lmer(selfLambda ~ oppLambda + (1 | id), df22 %>% filter(adjust == "n"))
+summary(model3)
+model4 <- lmer(selfLambda ~ oppLambda + prevDiff + (prevDiff | id), df22)
+summary(model4)
 
-getSelfLambda1 <- function(oppLambda_) {
+getSelfLambda <- function(oppLambda_, adjust_ = c("y", "n"), platform_ = c("mturk", "prolific", "sona")) {
   df <- df22 %>%
-    filter(oppLambda == oppLambda_)
+    filter(oppLambda == oppLambda_, adjust %in% adjust_, platform %in% platform_)
   summ <- summary(lmer(selfLambda ~ 1 + (1 | id), df))
   tibble(
     selfLambdaMean = summ$coefficients[1, 1],
@@ -356,31 +385,34 @@ getSelfLambda1 <- function(oppLambda_) {
 }
 df30 <- tibble(oppLambda = unique(df22$oppLambda)) %>%
   rowwise() %>%
-  mutate(getSelfLambda1(oppLambda))
+  mutate(getSelfLambda(oppLambda))
 df30 %>%
   ggplot(aes(as.factor(oppLambda), ymin = selfLambdaMean - selfLambdaSe, ymax = selfLambdaMean + selfLambdaSe)) +
   geom_linerange(size = 2) +
   labs(x = "Opponent lambda", y = "Participant's lambda toward opponent")
-ggsave("lambda2.pdf", width = 4, height = 4)
+ggsave("lambda1.pdf", width = 4, height = 4)
 
-getSelfLambda2 <- function(oppLambda_, platform_) {
-  df <- df22 %>%
-    filter(oppLambda == oppLambda_, platform == platform_)
-  summ <- summary(lmer(selfLambda ~ 1 + (1 | id), df))
-  tibble(
-    selfLambdaMean = summ$coefficients[1, 1],
-    selfLambdaSe = summ$coefficients[1, 2]
-  )
-}
 df31 <- expand_grid(
+  oppLambda = unique(df22$oppLambda),
+  adjust = c("y", "n")
+) %>%
+  rowwise() %>%
+  mutate(getSelfLambda(oppLambda, adjust)) %>%
+  mutate(adjust = factor(adjust, levels = c("y", "n"), labels = c("Yes", "No")))
+df31 %>%
+  ggplot(aes(as.factor(oppLambda), color = adjust, ymin = selfLambdaMean - selfLambdaSe, ymax = selfLambdaMean + selfLambdaSe)) +
+  geom_linerange(position = position_dodge(width = .5), size = 2) +
+  labs(x = "Opponent lambda", y = "Participant's lambda toward opponent", color = "Adjust")
+ggsave("lambda2.pdf", width = 5, height = 4)
+
+df32 <- expand_grid(
   oppLambda = unique(df22$oppLambda),
   platform = unique(df22$platform)
 ) %>%
   rowwise() %>%
-  mutate(getSelfLambda2(oppLambda, platform))
-df31 %>%
+  mutate(getSelfLambda(oppLambda, platform_ = platform))
+df32 %>%
   ggplot(aes(as.factor(oppLambda), color = platform, ymin = selfLambdaMean - selfLambdaSe, ymax = selfLambdaMean + selfLambdaSe)) +
   geom_linerange(position = position_dodge(width = .5), size = 2) +
   scale_y_continuous(breaks = seq(-1, 1, .2)) +
   labs(x = "Opponent lambda", y = "Participant's lambda toward opponent", color = "Platform")
-ggsave("lambda3.pdf", width = 5, height = 4)

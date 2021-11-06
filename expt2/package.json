@@ -1,0 +1,50 @@
+{
+  "name": "expt1",
+  "version": "0.1.0",
+  "private": true,
+  "devDependencies": {
+    "@babel/core": "^7.15.0",
+    "@babel/preset-env": "^7.15.0",
+    "@cycle/dom": "^23.0.0",
+    "@cycle/http": "^15.4.0",
+    "@cycle/isolate": "^5.2.0",
+    "@cycle/run": "^5.5.0",
+    "@cycle/state": "^1.5.0",
+    "@types/dedent": "^0.7.0",
+    "@types/ramda": "^0.27.44",
+    "@typescript-eslint/eslint-plugin": "^4.29.3",
+    "@typescript-eslint/parser": "^4.29.3",
+    "aws-sdk": "^2.979.0",
+    "babel-loader": "^8.2.2",
+    "copy-webpack-plugin": "^9.0.1",
+    "core-js": "^3.16.4",
+    "csx": "^10.0.2",
+    "dedent": "^0.7.0",
+    "eslint": "^7.32.0",
+    "eslint-webpack-plugin": "^3.0.1",
+    "html-webpack-plugin": "^5.3.2",
+    "js-yaml": "^4.1.0",
+    "ramda": "^0.27.1",
+    "snabbdom-to-html": "^7.0.0",
+    "ts-loader": "^9.2.5",
+    "ts-node": "^10.2.1",
+    "ts-toolbelt": "^9.6.0",
+    "typescript": "^4.4.2",
+    "typestyle": "^2.1.0",
+    "url-loader": "^4.1.1",
+    "webpack": "^5.51.1",
+    "webpack-cli": "^4.8.0",
+    "webpack-dev-server": "^4.0.0",
+    "xmlbuilder2": "^3.0.2",
+    "xstream": "^11.14.0"
+  },
+  "scripts": {
+    "preinstall": "npx only-allow pnpm",
+    "start": "webpack serve --mode development",
+    "build": "webpack --mode production",
+    "mturk": "cd src/mturk && tsc -b && node mturk.js"
+  },
+  "dependencies": {
+    "@types/js-yaml": "^4.0.3"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "target": "ES2020",
+    "noImplicitReturns": true,
+    "strict": true,
+    "strictFunctionTypes": false,
+    "allowJs": true,
+    "downlevelIteration": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "noErrorTruncation": true
+  },
+  "files": ["mturk.ts", "qualTypes.ts"]
+}

@@ -1,0 +1,71 @@
+live: true
+hits:
+  wtrRec:
+    url: 'https://experiments.evullab.org/qi-games-1/?type=mturk&ver=wklt'
+    frameHeight: 680
+    title: Two-player slider game (10–15 minutes, maximum $1 bonus)
+    description: You will play a slider game with another person.
+    reward: 1
+    duration: 1800
+    lifetime: 3600
+    keywords: 'game, slider, bonus'
+    assignments: 1
+    autoApproval: 60
+    bonusReason: Bonus for your total reward in the game.
+    quals:
+      -
+        name: locale
+        comparator: In
+        locales:
+          -
+            country: US
+        actionsGuarded: DiscoverPreviewAndAccept
+      -
+        name: adult
+        comparator: EqualTo
+        integers:
+          - 1
+        actionsGuarded: DiscoverPreviewAndAccept
+      -
+        name: numberHitsApproved
+        comparator: GreaterThanOrEqualTo
+        integers:
+          - 100
+        actionsGuarded: DiscoverPreviewAndAccept
+      -
+        name: percentAssignmentsApproved
+        comparator: GreaterThanOrEqualTo
+        integers:
+          - 95
+        actionsGuarded: DiscoverPreviewAndAccept
+      -
+        name: WtrRecVet
+        comparator: DoesNotExist
+        actionsGuarded: DiscoverPreviewAndAccept
+    review:
+      rejectReason: You cheated on submitting the HIT.
+      extend:
+        maxAssignments: 25
+        time: 3600
+  testHit:
+    url: 'https://experiments.evullab.org/var-games-9'
+    frameHeight: 700
+    title: Test HIT
+    description: This is a test HIT.
+    reward: 0.5
+    duration: 3600
+    lifetime: 3600
+    keywords: 'test'
+    assignments: 10
+    autoApproval: 3600
+qualTypes:
+  WtrRecVet:
+    description: Having done a wtr rec experiment
+    active: true
+  TestQualification:
+    description: A test qualification
+    retryDelay: 5
+    active: true
+    duration: 3600
+    test: test
+    answerKey: test

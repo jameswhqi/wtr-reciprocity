@@ -1,0 +1,9 @@
+what are you researching, methods use, what tasks participants will complete
+
+We are studying people's social decision making process.
+
+The participant will play 15 rounds of a slider game with a computer agent that pretends to be a human. In each round, the participant will make a decision on a slider that determines a reward for herself and a reward for the other player. Then the participant will see the other player's decision on another slider, which also corresponds to two rewards. The four rewards will be added to the participant's and the other player's total rewards.
+
+After the game, the participant will answer some questions about their experience and the strategies they used in playing the game.
+
+The participant's decisions on the sliders and answers to the questions after the game will be recorded.

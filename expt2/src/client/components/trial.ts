@@ -218,11 +218,11 @@ export function Trial(sources: Sources): Sinks {
       }
     })));
   const oppActR$ = oppAct$
-    .map<R<State>>(({ lambda }) => assoc('oppLambda', lambda));
+    .map(({ lambda }) => strictR<State>(assoc('oppLambda', lambda)));
   const collectedR$ = collected$
     .mapTo(strictR<State>(s => ({ ...s, collected: s.collected + 1 })));
-  const selfTouchedR$ = selfTouched$.mapTo<R<State>>(assoc('selfTouched', true));
-  const oppTouchedR$ = oppTouched$.mapTo<R<State>>(assoc('oppTouched', true));
+  const selfTouchedR$ = selfTouched$.mapTo(strictR<State>(assoc('selfTouched', true)));
+  const oppTouchedR$ = oppTouched$.mapTo(strictR<State>(assoc('oppTouched', true)));
 
   // view
   const stageDoneE$ = xs.merge(

@@ -5,6 +5,7 @@ import { always, assoc } from 'ramda';
 import { style } from 'typestyle';
 import xs, { Stream as S } from 'xstream';
 import { sError, sQuestionLabel } from '../../config';
+import { strictR } from '../../utils';
 
 interface Props {
   show: boolean;
@@ -51,8 +52,8 @@ export function makeTextArea(labelText: string) {
       touched: false
     }));
 
-    const valueR$ = input$.map(v => assoc('value', v));
-    const touchedR$ = blur$.mapTo(assoc('touched', true));
+    const valueR$ = input$.map(v => strictR<State>(assoc('value', v)));
+    const touchedR$ = blur$.mapTo(strictR<State>(assoc('touched', true)));
 
     // view
     const dom$ = xs.combine(state$, props$).map(([s, p]) => {

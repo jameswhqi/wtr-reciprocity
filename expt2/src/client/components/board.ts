@@ -304,8 +304,8 @@ export function makeBoard(role: 'self' | 'opp'): (s: Sources) => Sinks {
       .mapTo(strictR<State>(s => ({ ...s, fixedLambda: s.lambda })));
     const collectR$ = collect$
       .compose(sc(props$))
-      .map<R<State>>(([_, p]) => assoc('collected', p.oppReceiver === 'discard' ? 1 : 2));
-    const resetTotalR$ = resetTotal$.mapTo<R<State>>(assoc('total', 0));
+      .map(([_, p]) => strictR<State>(assoc('collected', p.oppReceiver === 'discard' ? 1 : 2)));
+    const resetTotalR$ = resetTotal$.mapTo(strictR<State>(assoc('total', 0)));
 
     const collectedR$ = collected$
       .map(({ value }) => strictR<State>(s => {

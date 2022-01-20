@@ -388,7 +388,7 @@ export function Game(sources: Sources): Sinks {
     trialStageDone$
       .filter(propEq('stage', 'collect'))
   )
-    .mapTo<R<State>>(assoc('readyForNext', true));
+    .mapTo(strictR<State>(assoc('readyForNext', true)));
   const saveTrialR$ = saveTrial$.mapTo(strictR<State>(s => ({
     ...s,
     history: append(makeTrialData(s), s.history)
@@ -400,7 +400,7 @@ export function Game(sources: Sources): Sinks {
   })));
   const goToMemoryR$ = trialSetStage$
     .filter(equals('memory'))
-    .mapTo<R<State>>(assoc('readyForNext', false));
+    .mapTo(strictR<State>(assoc('readyForNext', false)));
   const bothTouchedR$ = trial.event.filter(kindIs('bothTouched'))
     .mapTo(strictR<State>(s => ({ ...s, readyForNext: s.trial!.stage === 'memory' ? true : s.readyForNext })));
   const addTotalR$ = trialStageDone$

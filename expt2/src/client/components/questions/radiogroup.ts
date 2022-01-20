@@ -5,6 +5,7 @@ import { always, assoc } from 'ramda';
 import { style } from 'typestyle';
 import xs, { Stream as S } from 'xstream';
 import { sQuestionLabel } from '../../config';
+import { strictR } from '../../utils';
 
 interface Props {
   show: boolean;
@@ -42,8 +43,8 @@ export function makeRadioGroup(name: string, labelText: string, values: Array<[s
       touched: false
     }));
 
-    const valueR$ = input$.map(v => assoc('value', v));
-    const touchedR$ = input$.mapTo(assoc('touched', true));
+    const valueR$ = input$.map(v => strictR<State>(assoc('value', v)));
+    const touchedR$ = input$.mapTo(strictR<State>(assoc('touched', true)));
 
     // view
     const dom$ = state$.map(s => div([

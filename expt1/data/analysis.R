@@ -2,7 +2,7 @@ library(tidyverse)
 library(jsonlite)
 library(lmerTest)
 
-setwd("data")
+setwd("expt1/data")
 theme_set(theme_bw())
 
 se <- function(v) sd(v) / sqrt(length(v))
@@ -156,6 +156,24 @@ df10 %>%
   ggplot(aes(kind, error, color = platform)) +
   geom_point(position = position_dodge(width = .5), alpha = .1) +
   stat_summary(position = position_dodge(width = .5))
+df10 %>%
+  filter(kind == "memoryOpp") %>%
+  ggplot(aes(error)) +
+  geom_histogram()
+exclude <- df10 %>%
+  filter(kind == "self" & error > 2 |
+    kind == "discard" & error > 1.5 |
+    kind == "memorySelf" & error > .5 |
+    kind == "memoryOpp" & error > 2.5) %>%
+  count(id) %>%
+  print(n = Inf) %>%
+  filter(n > 1) %>%
+  pull(id)
+perfect <- df10 %>%
+  filter(error < 1) %>%
+  count(id) %>%
+  filter(n == 8) %>%
+  pull(id)
 
 getError <- function(kind_, platform_) {
   df <- df10 %>%
@@ -249,19 +267,42 @@ df20 <- map_dfr(6:14, function(batch) {
   })
 })
 
-exclude <- df10 %>%
-  filter(error > 2) %>%
-  # count(id) %>%
-  # filter(n > 1) %>%
-  pull(id) %>%
-  unique()
 df21 <- df20 %>%
   filter(!(id %in% exclude))
+df21 <- df20 %>%
+  filter(id %in% perfect)
+df20 %>%
+  filter(oppLambda == -1, adjust == "y") %>%
+  group_by(id) %>%
+  arrange(trialNumber) %>%
+  mutate(trialNumber = 1:n()) %>%
+  ggplot(aes(trialNumber, selfLambda)) +
+  stat_summary()
 
 df20 %>%
   ggplot(aes(as.factor(oppLambda), selfLambda)) +
-  geom_linerange(stat = "summary", size = 2) +
-  df20 %>%
+  geom_linerange(stat = "summary", size = 2)
+
+df20 %>%
+  group_by(id, oppLambda) %>%
+  summarize(selfLambda = mean(selfLambda)) %>%
+  group_by(oppLambda) %>%
+  summarize(
+    selfLambdaMean = mean(selfLambda),
+    selfLambdaSE = se(selfLambda)
+  ) %>%
+  mutate(across(.fns = ~ trimws(format(., digits = 3)))) %>%
+  write_delim("recip-summary.txt")
+df20 %>%
+  group_by(id, oppLambda) %>%
+  summarize(selfLambda = mean(selfLambda)) %>%
+  ungroup() %>%
+  mutate(x = oppLambda + runif(n(), -.25, .25)) %>%
+  select(oppLambda, x, selfLambda) %>%
+  mutate(across(.fns = ~ trimws(format(., digits = 2)))) %>%
+  write_delim("recip-raw.txt")
+
+df20 %>%
   ggplot(aes(oppLambda, selfLambda, color = platform)) +
   stat_summary()
 
@@ -282,6 +323,18 @@ df20 %>%
   ggplot(aes(oppLambda, oppToSelf)) +
   stat_summary()
 geom_jitter(height = 0, width = .2)
+
+# linear model ----
+model <- df20 %>%
+  group_by(id, oppLambda) %>%
+  summarize(selfLambda = mean(selfLambda)) %>%
+  lm(selfLambda ~ oppLambda, .)
+x <- seq(-1, 1, .1)
+predict(model, tibble(oppLambda = x), interval = "c") %>%
+  as_tibble() %>%
+  mutate(x = x) %>%
+  mutate(across(.fns = ~ round(., 3))) %>%
+  write_delim("recip-lm.txt")
 
 # 1st to 2nd trial ----
 df20 %>%
@@ -365,7 +418,7 @@ df22 %>%
   facet_wrap(vars(oppLambda))
 
 # mixed-effects model ----
-model1 <- lmer(selfLambda ~ oppLambda + (1 | id), df22)
+model1 <- lmer(selfLambda ~ oppLambda + (1 | id), df20)
 summary(model1)
 model2 <- lmer(selfLambda ~ oppLambda + (1 | id), df22 %>% filter(adjust == "y"))
 summary(model2)
@@ -375,7 +428,7 @@ model4 <- lmer(selfLambda ~ oppLambda + prevDiff + (prevDiff | id), df22)
 summary(model4)
 
 getSelfLambda <- function(oppLambda_, adjust_ = c("y", "n"), platform_ = c("mturk", "prolific", "sona")) {
-  df <- df22 %>%
+  df <- df20 %>%
     filter(oppLambda == oppLambda_, adjust %in% adjust_, platform %in% platform_)
   summ <- summary(lmer(selfLambda ~ 1 + (1 | id), df))
   tibble(
@@ -383,7 +436,7 @@ getSelfLambda <- function(oppLambda_, adjust_ = c("y", "n"), platform_ = c("mtur
     selfLambdaSe = summ$coefficients[1, 2]
   )
 }
-df30 <- tibble(oppLambda = unique(df22$oppLambda)) %>%
+df30 <- tibble(oppLambda = unique(df20$oppLambda)) %>%
   rowwise() %>%
   mutate(getSelfLambda(oppLambda))
 df30 %>%

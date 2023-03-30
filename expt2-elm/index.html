@@ -1,0 +1,63 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <script type="text/javascript" src="main.js"></script>
+</head>
+
+<body>
+</body>
+
+<script type="text/javascript">
+
+var app = Elm.Main.init();
+
+// elm to js
+app.ports.getTextLengths.subscribe(function(ids) {
+  // let retryTimes = 0;
+
+  // function retry() {
+  //   const lengths = {};
+  //   for (let id of ids) {
+  //     const e = document.getElementById(id);
+  //     if (e === null) {
+  //       retryTimes += 1;
+  //       if (retryTimes >= 50) {
+  //         console.log('Aborting after 50 retries!');
+  //         console.log(ids);
+  //         return;
+  //       }
+  //       requestAnimationFrame(retry);
+  //       return;
+  //     } else {
+  //       lengths[id] = e.getComputedTextLength();
+  //     }
+  //   }
+  //   app.ports.gotTextLengths.send(lengths);
+  // };
+
+  // requestAnimationFrame(retry);
+
+  requestAnimationFrame(() => {
+    const lengths = Object.fromEntries(ids.map(id => [id, document.getElementById(id).getComputedTextLength()]));
+    app.ports.gotTextLengths.send(lengths);
+  });
+});
+
+app.ports.saveState.subscribe(function(model) {
+  sessionStorage.setItem('state', JSON.stringify(model));
+});
+
+app.ports.loadState.subscribe(function() {
+  app.ports.stateLoaded.send(JSON.parse(sessionStorage.getItem('state')));
+});
+
+// js to elm
+// socket.addEventListener("message", function(event) {
+//     app.ports.messageReceiver.send(event.data);
+// });
+
+</script>
+
+</html>

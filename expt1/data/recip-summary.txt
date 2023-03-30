@@ -1,0 +1,4 @@
+oppLambda selfLambdaMean selfLambdaSE
+-1 -0.0713 0.0821
+0 0.0892 0.0816
+1 0.1932 0.1197

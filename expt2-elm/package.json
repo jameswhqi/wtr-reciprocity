@@ -1,0 +1,10 @@
+{
+	"devDependencies": {
+		"elm-live": "^4.0.2",
+		"elm-tooling": "^1.10.0"
+	},
+	"scripts": {
+		"start": "elm-live src/Main.elm -e node_modules/.bin/elm -- --output=main.js",
+		"debug": "elm-live src/Main.elm -e node_modules/.bin/elm -- --output=main.js --debug"
+	}
+}

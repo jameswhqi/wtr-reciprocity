@@ -39,6 +39,7 @@ module SvgHelper exposing
     , strokeColor
     , strokeDash
     , strokeWidth
+    , tabularNums
     , textA
     , textC
     , user
@@ -144,6 +145,7 @@ type alias Style msg =
     , pointerEvents : Maybe PointerEvents
     , hoverFill : Maybe C.Color
     , activeFill : Maybe C.Color
+    , tabularNums : Bool
     }
 
 
@@ -171,6 +173,7 @@ noStyle =
     , pointerEvents = Nothing
     , hoverFill = Nothing
     , activeFill = Nothing
+    , tabularNums = False
     }
 
 
@@ -269,6 +272,11 @@ pointerEvents =
     applyStyle .pointerEvents (\b a -> { a | pointerEvents = b })
 
 
+tabularNums : Element msg -> Element msg
+tabularNums (Element shape style) =
+    Element shape { style | tabularNums = True }
+
+
 draw : ColorsDict -> Element msg -> List (S.Svg msg)
 draw colors (Element shape style) =
     let
@@ -293,6 +301,11 @@ draw colors (Element shape style) =
                         , M.map (Css.active << L.singleton << Css.fill << colorToCssColor) style.activeFill
                         , if style.hidden then
                             Just (Css.visibility Css.hidden)
+
+                          else
+                            Nothing
+                        , if style.tabularNums then
+                            Just (Css.fontVariantNumeric Css.tabularNums)
 
                           else
                             Nothing
@@ -710,6 +723,7 @@ mapStyle f s =
     , pointerEvents = s.pointerEvents
     , hoverFill = s.hoverFill
     , activeFill = s.activeFill
+    , tabularNums = s.tabularNums
     }
 
 

@@ -8,7 +8,7 @@ import Browser as B
 import Browser.Dom as BD
 import Browser.Events as BE
 import Browser.Navigation as BN
-import Color as C
+import Color as CO
 import Colors exposing (..)
 import Css
 import Css.ModernNormalize as CM
@@ -21,6 +21,7 @@ import Json.Encode as E
 import List as L
 import List.Extra as LE
 import Maybe as M
+import Platform.Cmd as C
 import Process as P
 import Random as RA
 import Round as RO
@@ -45,14 +46,23 @@ import Utils exposing (..)
 -- ttrl: tutorial
 
 
+type ExptStage
+    = ESTtrl
+    | ESTest
+
+
 type GameStage
     = PreAct
     | Act
     | PostAct
     | ShowCpr
-    | Collect
-    | PostCollect
+    | CollectPays
+    | PostCollectPays
+    | ShowPredPay
+    | CollectPredPay
+    | PostCollectPredPay
     | Review
+    | PostReview
     | Memory
 
 
@@ -89,6 +99,7 @@ type alias TtrlModel =
 type alias TestModel =
     { game : GameModel
     , round : Int
+    , instrLength : Maybe Float
     , showTtrl : Bool
     , ttrl : TtrlModel
     }
@@ -103,6 +114,7 @@ type alias GameModel =
     , pttTotal : Float
     , mouseStatus : MouseStatus
     , board : BBox
+    , instrLength : Maybe Float
     , textLengths : TextLengths
     , animationStartTime : Maybe Int
     , slfAnimationState : AnimationState
@@ -140,7 +152,7 @@ type Msg
     | StateLoaded (Result D.Error Model)
     | GotTextLengths (Result D.Error TextLengths)
     | PrevStep
-    | NextStep
+    | NextStep Bool
     | TtrlProceed
     | MouseEnter
     | MouseLeave
@@ -149,6 +161,7 @@ type Msg
     | MouseMove Point
     | WindowResize
     | GotBoard (Result BD.Error BD.Element)
+    | NextRound
     | GoTo GameStage
     | Animate Int
     | LoadingStep
@@ -169,10 +182,10 @@ type alias AnimationState =
 
 
 type alias BoardConfig =
-    -- (x - vx) / scale = -((y - vy) / scale)^2
+    -- (y - vy) / scale = -((x - vx) / scale)^2
     { location : SliderLocation
-    , vx : Float
     , vy : Float
+    , vx : Float
     , scale : Float
     }
 
@@ -293,34 +306,12 @@ main =
 
 init : Flags -> U.Url -> BN.Key -> ( Model, Cmd Msg )
 init _ _ _ =
-    ( Ttrl
-        { game = initGame
-        , step = 1
-        , latestStep = 1
-        , instrLength = Nothing
-        , readyForNext = True
-        , gameStates = A.repeat (A.length ttrlSteps) initGame
-        }
-      -- , P.sleep 1000 |> T.perform (\_ -> GotTextLengths (Ok (DI.singleton messageId 100)))
-    , Cmd.batch
-        [ getInstrLengths 1
-        , getBoard
-        ]
-    )
+    case initStage of
+        ESTtrl ->
+            ( Ttrl initTtrl, initTtrlCmd )
 
-
-
--- ( Test
---     { game = initGame
---     , showTtrl = False
---     , ttrl =
---         { game = initGame
---         , step = 1
---         , messageLength = 0
---         }
---     }
--- , Cmd.map NormalGameMsg <| Cmd.batch [ getBoard, P.sleep 2000 |> T.perform (\_ -> CprAct) ]
--- )
+        ESTest ->
+            ( Test initTest, initTestCmd )
 
 
 initGame : GameModel
@@ -333,6 +324,7 @@ initGame =
     , pttTotal = 0
     , mouseStatus = UpOut
     , board = { x = 0, y = 0, width = 0, height = 0 }
+    , instrLength = Nothing
     , textLengths = DI.empty
     , animationStartTime = Nothing
     , slfAnimationState = Nothing
@@ -341,468 +333,623 @@ initGame =
     }
 
 
+initTtrl : TtrlModel
+initTtrl =
+    { game = initGame
+    , step = 1
+    , latestStep = 1
+    , instrLength = Nothing
+    , readyForNext = True
+    , gameStates = A.repeat (A.length ttrlSteps) initGame
+    }
+
+
+initTtrlCmd : Cmd Msg
+initTtrlCmd =
+    C.batch
+        [ getTtrlInstrLengths 1
+        , getBoard
+        ]
+
+
+initTest : TestModel
+initTest =
+    { game = { initGame | stage = Act }
+    , round = 1
+    , instrLength = Nothing
+    , showTtrl = False
+    , ttrl = { initTtrl | latestStep = A.length ttrlSteps }
+    }
+
+
+initTestCmd : Cmd Msg
+initTestCmd =
+    C.batch
+        [ P.sleep 2000 |> T.perform (always <| CprAct)
+        , getBoard
+        , getGameInstrLengths (testGameProps initTest |> .player) Act
+        ]
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
-update msg model =
-    case msg of
-        StateLoaded (Ok m) ->
-            ( m, Cmd.none )
+update msg m =
+    let
+        ( m1, c1 ) =
+            case msg of
+                StateLoaded (Ok m2) ->
+                    ( m2, C.none )
 
-        StateLoaded (Err _) ->
-            ( model, Cmd.none )
+                StateLoaded (Err _) ->
+                    ( m, C.none )
 
-        SaveState ->
-            ( model, saveState <| encodeModel model )
+                SaveState ->
+                    ( m, saveState <| encodeModel m )
 
-        LoadState ->
-            ( model, loadState () )
+                LoadState ->
+                    ( m, loadState () )
 
-        _ ->
-            case model of
-                Ttrl m ->
-                    Tuple.mapFirst Ttrl <| updateTtrl False msg m
+                NextStep _ ->
+                    case m of
+                        Ttrl t ->
+                            if t.step == A.length ttrlSteps then
+                                ( Test initTest, initTestCmd )
 
-                Test m ->
-                    Tuple.mapFirst Test <| updateTest msg m
+                            else
+                                ( m, C.none )
+
+                        _ ->
+                            ( m, C.none )
+
+                _ ->
+                    ( m, C.none )
+
+        ( m3, c3 ) =
+            case m1 of
+                Ttrl ttrl ->
+                    Tuple.mapFirst Ttrl <| updateTtrl False msg ttrl
+
+                Test test ->
+                    Tuple.mapFirst Test <| updateTest msg test
+    in
+    ( m3, C.batch [ c1, c3 ] )
 
 
 updateTtrl : Bool -> Msg -> TtrlModel -> ( TtrlModel, Cmd Msg )
-updateTtrl ignoreGame msg model =
+updateTtrl ignoreGame msg m =
     let
-        ( model1, cmd1 ) =
+        ( m1, c1 ) =
             case msg of
                 GotTextLengths (Ok ls) ->
-                    let
-                        maybeInstrLength =
-                            L.maximum << DI.values <| DI.filter (\k _ -> ST.startsWith instrId k) ls
-                    in
-                    ( model |> (maybeSet setInstrLength << M.map Just <| maybeInstrLength)
-                    , Cmd.none
+                    ( m |> updateInstrLength ttrlInstrId setTtrlInstrLength ls
+                    , C.none
                     )
 
                 PrevStep ->
-                    if model.step == 1 then
-                        ( model, Cmd.none )
+                    if m.step == 1 then
+                        ( m, C.none )
 
                     else
-                        ( { model
-                            | step = model.step - 1
+                        ( { m
+                            | step = m.step - 1
                             , instrLength = Nothing
-                            , game = M.withDefault initGame <| A.get (model.step - 2) model.gameStates
+                            , game = M.withDefault initGame <| A.get (m.step - 2) m.gameStates
                           }
-                        , getInstrLengths <| model.step - 1
+                        , getTtrlInstrLengths <| m.step - 1
                         )
 
-                NextStep ->
-                    if model.step == A.length ttrlSteps then
-                        ( model, Cmd.none )
+                NextStep wait ->
+                    let
+                        nextStep =
+                            getStep <| m.step + 1
+
+                        updateGameWithMsg msg1 =
+                            updateGame identity msg1 (ttrlGameProps m) (ttrlGameProps m) m.game
+
+                        ( game1, gameCmd1 ) =
+                            nextStep.gameMsg
+                                |> M.map updateGameWithMsg
+                                |> M.withDefault ( m.game, C.none )
+
+                        ( readyForNext, proceedCmd ) =
+                            case nextStep.proceed of
+                                ProceedAfterWait t ->
+                                    if m.step == m.latestStep && wait then
+                                        ( False
+                                        , P.sleep (t * 1000 / ttrlWaitSpeedRatio)
+                                            |> T.perform (always TtrlProceed)
+                                        )
+
+                                    else
+                                        ( True, C.none )
+
+                                ProceedOnMsg _ ->
+                                    ( False, C.none )
+                    in
+                    if m.step == A.length ttrlSteps || not m.readyForNext then
+                        ( m, C.none )
 
                     else
-                        let
-                            step =
-                                M.withDefault defaultStep <| A.get model.step ttrlSteps
-
-                            ( newGame, gameCmd, _ ) =
-                                case step.gameMsg of
-                                    Nothing ->
-                                        model.game |> noCmd
-
-                                    Just m ->
-                                        updateGame m (ttrlGameProps model) model.game
-
-                            proceed =
-                                case step.proceed of
-                                    ProceedAfterWait t ->
-                                        if model.step == model.latestStep then
-                                            P.sleep (t * 100) |> T.perform (always TtrlProceed)
-
-                                        else
-                                            P.sleep 0 |> T.perform (always TtrlProceed)
-
-                                    _ ->
-                                        Cmd.none
-                        in
-                        ( { model
-                            | step = model.step + 1
-                            , latestStep = max model.latestStep (model.step + 1)
-                            , readyForNext = False
+                        ( { m
+                            | step = m.step + 1
+                            , latestStep = max m.latestStep (m.step + 1)
+                            , readyForNext = readyForNext
                             , instrLength = Nothing
-                            , game = newGame
-                            , gameStates = A.set (model.step - 1) model.game model.gameStates
+                            , game = game1
+                            , gameStates = A.set (m.step - 1) m.game m.gameStates
                           }
-                        , Cmd.batch
-                            [ proceed
-                            , M.withDefault Cmd.none <| step.cmd
-                            , getInstrLengths <| model.step + 1
-                            , gameCmd
+                        , C.batch
+                            [ proceedCmd
+                            , M.withDefault C.none <| nextStep.cmd
+                            , getTtrlInstrLengths <| m.step + 1
+                            , gameCmd1
                             ]
                         )
 
+                NextRound ->
+                    ( m |> set (setTtrlGame << setGameStage) PostReview, C.none )
+
                 TtrlProceed ->
-                    ( { model | readyForNext = True }, Cmd.none )
+                    ( { m | readyForNext = True }, C.none )
 
                 _ ->
-                    let
-                        step =
-                            getStep model.step
+                    ( m, C.none )
 
-                        model2 =
-                            case step.proceed of
-                                ProceedOnMsg f ->
-                                    if f msg model then
-                                        { model | readyForNext = True }
+        currentStep =
+            getStep m.step
 
-                                    else
-                                        model
+        m2 =
+            case currentStep.proceed of
+                ProceedOnMsg f ->
+                    if f msg m then
+                        { m1 | readyForNext = True }
 
-                                _ ->
-                                    model
-                    in
-                    ( model2, Cmd.none )
+                    else
+                        m1
+
+                _ ->
+                    m1
+
+        ( game2, gameCmd2 ) =
+            updateGame identity msg (ttrlGameProps m) (ttrlGameProps m2) m2.game
     in
     if ignoreGame then
-        ( model1, cmd1 )
+        ( m2, c1 )
 
     else
-        let
-            ( newGame, gameCmd, _ ) =
-                updateGame msg (ttrlGameProps model1) model1.game
-        in
-        ( { model1 | game = newGame }, Cmd.batch [ cmd1, gameCmd ] )
+        ( { m2 | game = game2 }, C.batch [ c1, gameCmd2 ] )
 
 
 updateTest : Msg -> TestModel -> ( TestModel, Cmd Msg )
-updateTest msg model =
-    case msg of
-        NormalGameMsg m ->
-            let
-                ( newGame, cmd, wrap ) =
-                    updateGame m (testGameProps model) model.game
-
-                wrapper =
-                    if wrap then
-                        NormalGameMsg
-
-                    else
-                        identity
-            in
-            ( { model | game = newGame }, Cmd.map wrapper cmd )
-
-        TestTtrlGameMsg m ->
-            let
-                ( newGame, cmd, wrap ) =
-                    updateGame m (ttrlGameProps model.ttrl) model.ttrl.game
-
-                wrapper =
-                    if wrap then
-                        TestTtrlGameMsg
-
-                    else
-                        identity
-            in
-            ( model |> (setTestModelTttr << setTtrlModelGame << always <| newGame), Cmd.map wrapper cmd )
-
-        _ ->
-            let
-                ( newTtrl, ttrlCmd ) =
-                    updateTtrl True msg model.ttrl
-
-                ( ( newGame, gameCmd, wrap ), gameSetter ) =
-                    if model.showTtrl then
-                        ( updateGame msg (ttrlGameProps model.ttrl) model.ttrl.game
-                        , setTestModelTttr << setTtrlModelGame << always
-                        )
-
-                    else
-                        ( updateGame msg (testGameProps model) model.game
-                        , setTestModelGame << always
-                        )
-
-                wrapper =
-                    if wrap then
-                        if model.showTtrl then
-                            TestTtrlGameMsg
-
-                        else
-                            NormalGameMsg
-
-                    else
-                        identity
-            in
-            ( { model | ttrl = newTtrl }
-                |> gameSetter newGame
-            , Cmd.batch [ ttrlCmd, Cmd.map wrapper gameCmd ]
-            )
-
-
-updateGame : Msg -> GameProps -> GameModel -> ( GameModel, Cmd Msg, Bool )
-updateGame msg p model =
+updateTest msg m =
     let
-        localY =
-            if p.player == Ptt then
-                localYPtt
-
-            else
-                localYCpr
-
-        getLambda y =
-            Just << yToLambda p.boardConfig <| localY y model.board
-    in
-    case msg of
-        GotTextLengths (Ok ls) ->
-            let
-                newLengths =
-                    DI.union (DI.filter (\k _ -> not <| ST.startsWith instrId k) ls) model.textLengths
-            in
-            { model | textLengths = newLengths } |> noCmd
-
-        MouseEnter ->
-            { model
-                | mouseStatus =
-                    if model.mouseStatus == UpOut then
-                        UpIn
-
-                    else
-                        model.mouseStatus
-            }
-                |> noCmd
-
-        MouseLeave ->
-            { model
-                | mouseStatus =
-                    if model.mouseStatus == UpIn then
-                        UpOut
-
-                    else
-                        model.mouseStatus
-            }
-                |> noCmd
-
-        MouseDown { x, y } ->
-            if inBBox x y model.board then
-                let
-                    ( lambda, cmd ) =
-                        if isActiveStage model.stage then
-                            ( getLambda y, getBarNumberLengths p.show )
-
-                        else
-                            ( model.lambda, Cmd.none )
-                in
-                ( { model | mouseStatus = DownIn, lambda = lambda }, cmd, False )
-
-            else
-                { model | mouseStatus = DownOut } |> noCmd
-
-        MouseUp { x, y } ->
-            { model
-                | mouseStatus =
-                    if inBBox x y model.board then
-                        UpIn
-
-                    else
-                        UpOut
-                , lambda =
-                    if model.fixedLambda == Nothing then
-                        model.lambda
-
-                    else
-                        model.fixedLambda
-            }
-                |> noCmd
-
-        MouseMove { y } ->
-            ( { model | lambda = getLambda y }, getBarNumberLengths p.show, False )
-
-        WindowResize ->
-            ( model, getBoard, False )
-
-        GotBoard (Ok { element }) ->
-            { model | board = element } |> noCmd
-
-        GoTo Act ->
-            ( { model | stage = Act, lambda = Nothing, fixedLambda = Nothing, cprActed = False, prediction = Nothing }
-            , if p.isTtrl then
-                Cmd.none
-
-              else
-                P.sleep 2000 |> T.perform (\_ -> CprAct)
-            , True
-            )
-
-        GoTo PostAct ->
-            let
-                newModel =
-                    case p.player of
-                        Ptt ->
-                            { model | stage = PostAct, fixedLambda = model.lambda }
-
-                        Cpr ->
-                            { model | stage = PostAct, lambda = Nothing, prediction = model.lambda }
-
-                cmd =
-                    if model.cprActed && not p.isTtrl then
-                        let
-                            newStage =
-                                if p.player == Ptt then
-                                    Collect
-
-                                else
-                                    ShowCpr
-                        in
-                        P.sleep 1000
-                            |> T.perform (always <| GoTo newStage)
-
-                    else
-                        Cmd.none
-            in
-            ( newModel, cmd, True )
-
-        GoTo Memory ->
-            { model | stage = Memory, lambda = Nothing, fixedLambda = Nothing, prediction = Nothing } |> noCmd
-
-        GoTo ShowCpr ->
-            ( { model | stage = ShowCpr, lambda = Just 1, fixedLambda = Just 1 }
-            , if p.isTtrl then
-                Cmd.none
-
-              else
-                P.sleep 1000 |> T.perform (\_ -> GoTo Collect)
-            , True
-            )
-
-        GoTo Collect ->
-            ( { model | stage = Collect }, getBarNumberLengths p.show, False )
-
-        GoTo stage ->
-            { model | stage = stage } |> noCmd
-
-        Animate t ->
-            updateAnimate t model p |> noCmd
-
-        LoadingStep ->
-            { model | loadingStep = model.loadingStep + 1 } |> noCmd
-
-        CprAct ->
-            let
-                cmd =
-                    if model.stage == PostAct && not p.isTtrl then
-                        let
-                            newStage =
-                                if p.player == Ptt then
-                                    Collect
-
-                                else
-                                    ShowCpr
-                        in
-                        P.sleep 1000
-                            |> T.perform (always <| GoTo newStage)
-
-                    else
-                        Cmd.none
-            in
-            ( { model | cprActed = True }, cmd, True )
-
-        _ ->
-            model |> noCmd
-
-
-updateAnimate : Int -> GameModel -> GameProps -> GameModel
-updateAnimate t model p =
-    case model.animationStartTime of
-        Just t0 ->
-            case model.lambda of
-                Nothing ->
-                    model
-
-                Just lambda ->
+        ( m1, c1 ) =
+            case msg of
+                NormalGameMsg msg1 ->
                     let
-                        ( tfSlf, tfOpp ) =
-                            if p.player == Ptt then
-                                ( tfPtt, tfCpr )
+                        ( game1, gameCmd1 ) =
+                            updateGame NormalGameMsg msg1 (testGameProps m) (testGameProps m) m.game
+                    in
+                    ( { m | game = game1 }, gameCmd1 )
+
+                TestTtrlGameMsg msg1 ->
+                    let
+                        ( game1, gameCmd1 ) =
+                            updateGame TestTtrlGameMsg msg1 (ttrlGameProps m.ttrl) (ttrlGameProps m.ttrl) m.ttrl.game
+                    in
+                    ( m |> set (setTestModelTttr << setTtrlModelGame) game1, gameCmd1 )
+
+                NextRound ->
+                    updateTest (NormalGameMsg <| GoTo Act) { m | round = m.round + 1 }
+
+                _ ->
+                    ( m, C.none )
+
+        ( ttrl, ttrlCmd ) =
+            updateTtrl True msg m1.ttrl
+
+        ( ( game2, gameCmd2 ), gameSetter ) =
+            if m1.showTtrl then
+                ( updateGame TestTtrlGameMsg msg (ttrlGameProps m.ttrl) (ttrlGameProps m1.ttrl) m1.ttrl.game
+                , set (setTestModelTttr << setTtrlModelGame)
+                )
+
+            else
+                ( updateGame NormalGameMsg msg (testGameProps m) (testGameProps m1) m1.game
+                , set setTestModelGame
+                )
+    in
+    ( { m1 | ttrl = ttrl } |> gameSetter game2
+    , C.batch [ c1, ttrlCmd, gameCmd2 ]
+    )
+
+
+updateGame : (Msg -> Msg) -> Msg -> GameProps -> GameProps -> GameModel -> ( GameModel, Cmd Msg )
+updateGame wrapper msg op p m =
+    let
+        localX =
+            if p.player == Ptt then
+                localXPtt
+
+            else
+                localXCpr
+
+        getLambda x =
+            Just << xToLambda p.boardConfig <| localX x m.board
+
+        ( m1, c1, wrap ) =
+            case msg of
+                GotTextLengths (Ok ls) ->
+                    let
+                        m2 =
+                            m |> updateInstrLength gameInstrId setGameInstrLength ls
+
+                        pred k _ =
+                            L.all (\i -> not <| ST.startsWith i k) [ ttrlInstrId, gameInstrId ]
+
+                        newLengths =
+                            DI.union (DI.filter pred ls) m.textLengths
+                    in
+                    { m2 | textLengths = newLengths } |> noCmdOrWrap
+
+                MouseEnter ->
+                    let
+                        mouseStatus =
+                            if m.mouseStatus == UpOut then
+                                UpIn
 
                             else
-                                ( tfCpr, tfPtt )
+                                m.mouseStatus
+                    in
+                    { m | mouseStatus = mouseStatus } |> noCmdOrWrap
 
-                        payoffs =
-                            calcPayoffs p.boardConfig lambda
+                MouseLeave ->
+                    let
+                        mouseStatus =
+                            if m.mouseStatus == UpIn then
+                                UpOut
 
-                        slfAnimationState =
-                            let
-                                slfBarNumberLength =
-                                    M.withDefault 0 <| DI.get slfBarNumberId model.textLengths
-                            in
+                            else
+                                m.mouseStatus
+                    in
+                    { m | mouseStatus = mouseStatus } |> noCmdOrWrap
+
+                MouseDown { x, y } ->
+                    let
+                        ( lambda, c2 ) =
+                            if isActiveStage m.stage then
+                                ( getLambda x, getBarNumberLengths p.show )
+
+                            else
+                                ( m.lambda, C.none )
+                    in
+                    if inBBox x y m.board then
+                        ( { m | mouseStatus = DownIn, lambda = lambda }, c2, False )
+
+                    else
+                        { m | mouseStatus = DownOut } |> noCmdOrWrap
+
+                MouseUp { x, y } ->
+                    let
+                        mouseStatus =
+                            if inBBox x y m.board then
+                                UpIn
+
+                            else
+                                UpOut
+
+                        lambda =
+                            if m.fixedLambda == Nothing then
+                                m.lambda
+
+                            else
+                                m.fixedLambda
+                    in
+                    { m | mouseStatus = mouseStatus, lambda = lambda } |> noCmdOrWrap
+
+                MouseMove { x } ->
+                    ( { m | lambda = getLambda x }
+                    , getBarNumberLengths p.show
+                    , False
+                    )
+
+                WindowResize ->
+                    ( m, getBoard, False )
+
+                GotBoard (Ok { element }) ->
+                    { m | board = element } |> noCmdOrWrap
+
+                GoTo PreAct ->
+                    { m
+                        | stage = PreAct
+                        , lambda = Nothing
+                        , fixedLambda = Nothing
+                        , cprActed = False
+                        , prediction = Nothing
+                    }
+                        |> noCmdOrWrap
+
+                GoTo Act ->
+                    let
+                        c2 =
+                            if p.isTtrl then
+                                C.none
+
+                            else
+                                P.sleep 2000 |> T.perform (\_ -> CprAct)
+                    in
+                    ( { m
+                        | stage = Act
+                        , lambda = Nothing
+                        , fixedLambda = Nothing
+                        , cprActed = False
+                        , prediction = Nothing
+                      }
+                    , c2
+                    , True
+                    )
+
+                GoTo PostAct ->
+                    let
+                        m2 =
+                            case p.player of
+                                Ptt ->
+                                    { m | stage = PostAct, lambda = newLambda, fixedLambda = newLambda }
+
+                                Cpr ->
+                                    { m | stage = PostAct, lambda = Nothing, prediction = newLambda }
+
+                        newLambda =
+                            Just << M.withDefault 0.5 <| m.lambda
+
+                        c2 =
+                            if m.cprActed && not p.isTtrl then
+                                P.sleep 1000 |> T.perform (always <| GoTo newStage)
+
+                            else
+                                C.none
+
+                        newStage =
+                            if p.player == Ptt then
+                                CollectPays
+
+                            else
+                                ShowCpr
+                    in
+                    ( m2, c2, True )
+
+                GoTo Memory ->
+                    { m | stage = Memory, lambda = Nothing, fixedLambda = Nothing, prediction = Nothing } |> noCmdOrWrap
+
+                GoTo ShowCpr ->
+                    ( { m | stage = ShowCpr, lambda = Just 1, fixedLambda = Just 1 }
+                    , P.sleep 1000 |> T.perform (\_ -> GoTo CollectPays)
+                    , True
+                    )
+
+                GoTo CollectPays ->
+                    ( { m | stage = CollectPays }, getBarNumberLengths p.show, False )
+
+                GoTo ShowPredPay ->
+                    let
+                        getStage pay =
+                            if roundPayoff (pay * payoffScale) == 0 then
+                                Review
+
+                            else
+                                CollectPredPay
+
+                        stage =
+                            M.map2 calcPredPayoff m.prediction m.fixedLambda
+                                |> M.map getStage
+                                |> M.withDefault Review
+                    in
+                    ( { m | stage = ShowPredPay }
+                    , P.sleep 1000 |> T.perform (\_ -> GoTo stage)
+                    , True
+                    )
+
+                GoTo CollectPredPay ->
+                    ( { m | stage = CollectPredPay }, getTextLengths [ predPayId ], False )
+
+                GoTo stage ->
+                    { m | stage = stage } |> noCmdOrWrap
+
+                Animate t ->
+                    let
+                        ( m2, c2 ) =
+                            updateAnimate t m p
+                    in
+                    ( m2, c2, False )
+
+                LoadingStep ->
+                    { m | loadingStep = m.loadingStep + 1 } |> noCmdOrWrap
+
+                CprAct ->
+                    let
+                        c2 =
+                            if m.stage == PostAct && not p.isTtrl then
+                                P.sleep 1000 |> T.perform (always <| GoTo stage)
+
+                            else
+                                C.none
+
+                        stage =
+                            if p.player == Ptt then
+                                CollectPays
+
+                            else
+                                ShowCpr
+                    in
+                    ( { m | cprActed = True }, c2, True )
+
+                _ ->
+                    m |> noCmdOrWrap
+
+        ( m3, c3 ) =
+            if op.player /= p.player || m.stage /= m1.stage then
+                ( { m1 | instrLength = Nothing }, getGameInstrLengths p.player m1.stage )
+
+            else
+                ( m1, C.none )
+
+        wrapper2 =
+            if wrap then
+                wrapper
+
+            else
+                identity
+    in
+    ( m3, C.map wrapper2 <| C.batch [ c1, c3 ] )
+
+
+updateAnimate : Int -> GameModel -> GameProps -> ( GameModel, Cmd Msg )
+updateAnimate t m p =
+    let
+        ( tfSlf, tfOpp ) =
+            if p.player == Ptt then
+                ( tfPtt, tfCpr )
+
+            else
+                ( tfCpr, tfPtt )
+
+        update1 t0 lambda =
+            let
+                payoffs =
+                    calcPayoffs p.boardConfig lambda
+
+                slfAnimationState =
+                    getSlfAnimationState t0 payoffs
+
+                oppAnimationState =
+                    getOppAnimationState t0 payoffs
+
+                pttTotal =
+                    if p.player == Ptt && m.slfAnimationState /= Nothing && slfAnimationState == Nothing then
+                        m.pttTotal + (roundPayoff <| payoffs.slf * payoffScale)
+
+                    else if (p.player == Ptt && p.oppReceiver == Slf || p.player == Cpr && p.oppReceiver == Opp) && m.oppAnimationState /= Nothing && oppAnimationState == Nothing then
+                        m.pttTotal + (roundPayoff <| payoffs.opp * payoffScale)
+
+                    else if p.player == Cpr && m.slfAnimationState /= Nothing && slfAnimationState == Nothing then
+                        m.pttTotal + (roundPayoff <| (M.withDefault 0 <| M.map2 calcPredPayoff m.fixedLambda m.prediction) * payoffScale)
+
+                    else
+                        m.pttTotal
+
+                ( stage, animationStartTime, cmd ) =
+                    if slfAnimationState == Nothing && oppAnimationState == Nothing then
+                        ( if m.stage == CollectPays && (p.isTtrl || p.player == Cpr) then
+                            PostCollectPays
+
+                          else if m.stage == CollectPredPay && p.isTtrl then
+                            PostCollectPredPay
+
+                          else
+                            Review
+                        , Nothing
+                        , if m.stage == CollectPays && not p.isTtrl && p.player == Cpr then
+                            P.sleep 1000 |> T.perform (always <| GoTo ShowPredPay)
+
+                          else
+                            C.none
+                        )
+
+                    else
+                        ( m.stage, m.animationStartTime, C.none )
+            in
+            ( { m
+                | slfAnimationState = slfAnimationState
+                , oppAnimationState = oppAnimationState
+                , pttTotal = pttTotal
+                , stage = stage
+                , animationStartTime = animationStartTime
+              }
+            , cmd
+            )
+
+        getSlfAnimationState t0 payoffs =
+            case m.stage of
+                CollectPays ->
+                    let
+                        slfBarNumberLength =
+                            M.withDefault 0 <| DI.get slfBarNumberId m.textLengths
+                    in
+                    calcAnimation
+                        { startX = tfSlf.x <| clSlfBarX + dlBarWidth / 2 - slfBarNumberLength / 2 / dBoardSize
+                        , startY = tfSlf.y <| payoffs.slf + dlBarNumberVSep
+                        , endX = tfSlf.x clIconX
+                        , endY = tfSlf.y clTotalY
+                        , t = t - t0
+                        }
+
+                CollectPredPay ->
+                    let
+                        predPayoffs predLambda =
+                            ( predLambda, calcPayoffs p.boardConfig predLambda )
+
+                        getState ( pl, predPays ) =
                             calcAnimation
-                                { startX = tfSlf.x <| payoffs.slf + dlBarNumberHSep + slfBarNumberLength / 2 / dBoardSize
-                                , startY = tfSlf.y clSlfBarY
-                                , endX = tfSlf.x clTotalX
-                                , endY = tfSlf.y clIconY
+                                { startX = tfSlf.x <| predPays.opp + 0.02 * pl
+                                , startY = tfSlf.y <| predPays.slf + dlPredPaySep
+                                , endX = tfOpp.x clIconX
+                                , endY = tfOpp.y clTotalY
+                                , t = t - t0
+                                }
+                    in
+                    M.map predPayoffs m.prediction
+                        |> M.andThen getState
+
+                _ ->
+                    Nothing
+
+        getOppAnimationState t0 payoffs =
+            case m.stage of
+                CollectPays ->
+                    let
+                        oppBarNumberLength =
+                            M.withDefault 0 <| DI.get oppBarNumberId m.textLengths
+                    in
+                    case p.oppReceiver of
+                        Opp ->
+                            calcAnimation
+                                { startX = tfSlf.x <| payoffs.opp + dlBarNumberHSep + oppBarNumberLength / 2 / dBoardSize
+                                , startY = tfSlf.y clOppBarY
+                                , endX = tfOpp.x clIconX
+                                , endY = tfOpp.y clTotalY
                                 , t = t - t0
                                 }
 
-                        oppAnimationState =
-                            let
-                                oppBarNumberLength =
-                                    M.withDefault 0 <| DI.get oppBarNumberId model.textLengths
-                            in
-                            case p.oppReceiver of
-                                Opp ->
-                                    calcAnimation
-                                        { startX = tfSlf.x <| clOppBarX + dlBarWidth / 2 - oppBarNumberLength / 2 / dBoardSize
-                                        , startY = tfSlf.y <| payoffs.opp + dlBarNumberVSep
-                                        , endX = tfOpp.x clTotalX
-                                        , endY = tfOpp.y clIconY
-                                        , t = t - t0
-                                        }
+                        Slf ->
+                            calcAnimation
+                                { startX = tfSlf.x <| payoffs.opp + dlBarNumberHSep + oppBarNumberLength / 2 / dBoardSize
+                                , startY = tfSlf.y clOppBarY
+                                , endX = tfSlf.x clIconX
+                                , endY = tfSlf.y clTotalY
+                                , t = t - t0
+                                }
 
-                                Slf ->
-                                    calcAnimation
-                                        { startX = tfSlf.x clOppBarX
-                                        , startY = tfSlf.y <| payoffs.opp + dlBarNumberVSep
-                                        , endX = tfSlf.x clTotalX
-                                        , endY = tfSlf.y clIconY
-                                        , t = t - t0
-                                        }
+                        Discard ->
+                            Nothing
 
-                                Discard ->
-                                    Nothing
-
-                        pttTotal =
-                            if p.player == Ptt && model.slfAnimationState /= Nothing && slfAnimationState == Nothing then
-                                model.pttTotal + (roundPayoff <| payoffs.slf * payoffScale)
-
-                            else if (p.player == Ptt && p.oppReceiver == Slf || p.player == Cpr && p.oppReceiver == Opp) && model.oppAnimationState /= Nothing && oppAnimationState == Nothing then
-                                model.pttTotal + (roundPayoff <| payoffs.opp * payoffScale)
-
-                            else
-                                model.pttTotal
-
-                        ( stage, animationStartTime ) =
-                            if slfAnimationState == Nothing && oppAnimationState == Nothing then
-                                ( if p.isTtrl then
-                                    PostCollect
-
-                                  else
-                                    Review
-                                , Nothing
-                                )
-
-                            else
-                                ( model.stage, model.animationStartTime )
-                    in
-                    { model
-                        | slfAnimationState = slfAnimationState
-                        , oppAnimationState = oppAnimationState
-                        , pttTotal = pttTotal
-                        , stage = stage
-                        , animationStartTime = animationStartTime
-                    }
-
+                _ ->
+                    Nothing
+    in
+    case m.animationStartTime of
         Nothing ->
-            { model | animationStartTime = Just t }
+            ( { m | animationStartTime = Just t }, C.none )
+
+        Just t0 ->
+            case m.lambda of
+                Nothing ->
+                    ( m, C.none )
+
+                Just lambda ->
+                    update1 t0 lambda
 
 
-noCmd : a -> ( a, Cmd msg, Bool )
-noCmd a =
-    ( a, Cmd.none, False )
+noCmdOrWrap : a -> ( a, Cmd msg, Bool )
+noCmdOrWrap a =
+    ( a, C.none, False )
 
 
 
@@ -820,12 +967,7 @@ view m =
                         viewTtrl t
 
                     Test t ->
-                        if t.showTtrl then
-                            viewTtrl t.ttrl
-
-                        else
-                            L.append (viewGame (testGameProps t) t.game) <|
-                                viewRoundCounter { round = t.round, totalRounds = nTestRounds, player = roundToPlayer t.round }
+                        viewTest t
         in
         [ CM.globalHtml
         , H.div []
@@ -839,9 +981,9 @@ view m =
                 , SA.viewBox << ST.join " " << L.map ST.fromFloat <| [ 0, 0, dFullWidth, dFullHeight ]
                 , SA.pointerEvents "none"
                 , SA.css
-                    [ --Css.fontFamilies [ "Helvetica", "Arial", "sans-serif" ]
-                      Css.fontVariantNumeric Css.tabularNums
-                    , Css.property "user-select" "none"
+                    [ -- Css.fontFamilies [ "Helvetica", "Arial", "sans-serif" ]
+                      -- Css.fontVariantNumeric Css.tabularNums
+                      Css.property "user-select" "none"
                     , Css.property "-webkit-user-select" "none"
                     ]
                 ]
@@ -860,19 +1002,51 @@ viewTtrl ttrl =
 
         ( prevButton, nextButton ) =
             if ttrl.readyForNext then
-                ( viewButton { x = cCenterX + 140, y = tfPtt.y clIconY, w = 120, h = 50, text = "Previous", clickMsg = PrevStep, id = Just prevButtonId }
-                , viewButton { x = cCenterX + 270, y = tfPtt.y clIconY, w = 120, h = 50, text = "Next", clickMsg = NextStep, id = Nothing }
+                ( viewButton { x = cCenterX - 70, y = cCenterY + 270, w = 120, h = 50, text = "Previous", clickMsg = PrevStep, id = Just prevButtonId }
+                , viewButton
+                    { x = cCenterX + 70
+                    , y = cCenterY + 270
+                    , w = 120
+                    , h = 50
+                    , text =
+                        if ttrl.step == A.length ttrlSteps then
+                            "Finish"
+
+                        else
+                            "Next"
+                    , clickMsg = NextStep True
+                    , id = Just nextButtonId
+                    }
                 )
 
             else
                 ( [], [] )
+
+        -- stepCounter =
     in
-    L.concat [ viewGame (ttrlGameProps ttrl) ttrl.game, prevButton, nextButton ]
-        |> M.withDefault identity (M.map (\s -> addInstr s.instr ttrl.step ttrl.instrLength ttrl.game.textLengths) step)
+    L.concat [ viewGame (ttrlGameProps ttrl) ttrl.game, prevButton, nextButton, viewStepCounter ttrl.step ]
+        |> M.withDefault identity (M.map (\s -> addInstr s.instr ttrl.instrLength ttrl.game.textLengths) step)
 
 
-addInstr : Instr -> Int -> Maybe Float -> TextLengths -> List (Element msg) -> List (Element msg)
-addInstr m step instrLength textLengths =
+viewTest : TestModel -> List (Element Msg)
+viewTest test =
+    if test.showTtrl then
+        viewTtrl test.ttrl
+
+    else
+        let
+            roundCounter =
+                viewRoundCounter
+                    { round = test.round
+                    , totalRounds = nTestRounds
+                    , player = roundToPlayer test.round
+                    }
+        in
+        L.concat [ viewGame (testGameProps test) test.game, roundCounter ]
+
+
+addInstr : Instr -> Maybe Float -> TextLengths -> List (Element msg) -> List (Element msg)
+addInstr m instrLength textLengths =
     case m of
         StaticInstr c ->
             \l ->
@@ -880,7 +1054,7 @@ addInstr m step instrLength textLengths =
                     [ l
                     , if c.dim then
                         [ rect { x = 0, y = 0, w = dFullWidth, h = dFullHeight }
-                            |> fill (C.white |> setAlpha 0.5)
+                            |> fill (CO.white |> setAlpha 0.5)
                             |> onLayer 1
                         ]
 
@@ -891,17 +1065,17 @@ addInstr m step instrLength textLengths =
                         , y = c.y
                         , anchor = c.anchor
                         , text = c.text
-                        , step = step
+                        , prefix = ttrlInstrId
                         , instrLength = instrLength
                         }
                     ]
 
         Callout c ->
-            addElements c.target <| addCallout c step instrLength textLengths
+            addElements c.target <| addCallout c instrLength textLengths
 
 
-addCallout : CalloutConfig -> Int -> Maybe Float -> TextLengths -> Element msg -> List (Element msg)
-addCallout c step instrLength textLengths (Element shape _) =
+addCallout : CalloutConfig -> Maybe Float -> TextLengths -> Element msg -> List (Element msg)
+addCallout c instrLength textLengths (Element shape _) =
     let
         arrowLength =
             50
@@ -944,19 +1118,20 @@ addCallout c step instrLength textLengths (Element shape _) =
             arrowEndY - arrowLength * arrowDir.y
     in
     (line { x1 = arrowStartX, x2 = arrowEndX, y1 = arrowStartY, y2 = arrowEndY, arrow = Just 5 }
-        |> stroke C.black 3
+        |> stroke CO.black 3
+        |> onLayer 3
     )
         :: buildMessage
             { x = arrowStartX
             , y = arrowStartY
             , anchor = c.instrAnchor
             , text = c.text
-            , step = step
+            , prefix = ttrlInstrId
             , instrLength = instrLength
             }
 
 
-buildMessage : { x : Float, y : Float, anchor : Anchor, text : String, step : Int, instrLength : Maybe Float } -> List (Element msg)
+buildMessage : { x : Float, y : Float, anchor : Anchor, text : String, prefix : String, instrLength : Maybe Float } -> List (Element msg)
 buildMessage c =
     let
         lines =
@@ -994,8 +1169,8 @@ buildMessage c =
                 , y = centerY + (-(n - 1) / 2 + toFloat i) * (fontSize + lineSkip)
                 , size = fontSize
                 }
-                |> id (buildMultilineId (buildMultilineId instrId c.step) (i + 1))
-                |> onLayer 1
+                |> id (buildMultilineId c.prefix (i + 1))
+                |> onLayer 3
                 |> (if c.instrLength == Nothing then
                         hide
 
@@ -1007,9 +1182,9 @@ buildMessage c =
             M.map
                 (\w ->
                     rectC { x = centerX, y = centerY, w = w, h = fullH }
-                        |> stroke C.black 3
-                        |> fill C.white
-                        |> onLayer 1
+                        |> stroke CO.black 3
+                        |> fill CO.white
+                        |> onLayer 3
                 )
                 fullW
     in
@@ -1046,10 +1221,10 @@ viewGame p game =
 
         background =
             rect { x = 0, y = 0, w = dFullWidth, h = dFullHeight }
-                |> fill (C.rgb255 250 250 250)
+                |> fill (CO.rgb255 250 250 250)
                 |> onLayer -1
 
-        predictionThumb =
+        pred =
             case game.prediction of
                 Nothing ->
                     []
@@ -1060,22 +1235,55 @@ viewGame p game =
                             calcPayoffs p.boardConfig lambda
 
                         cSliderX =
-                            tfCpr.x payoffs.slf
+                            tfCpr.x payoffs.opp
 
                         cSliderY =
-                            tfCpr.y payoffs.opp
+                            tfCpr.y payoffs.slf
+
+                        predThumb =
+                            circle { x = cSliderX, y = cSliderY, r = 7.5 }
+                                |> stroke (hPtt 10) 2
+                                |> fill (setAlpha 0.5 <| hPtt 17)
+                                |> (if game.stage == PostAct then
+                                        id thumbId
+
+                                    else
+                                        identity
+                                   )
+
+                        predPay =
+                            M.map (calcPredPayoff lambda) game.fixedLambda
+
+                        getPredPayText pay =
+                            if p.player == Cpr && L.member game.stage [ ShowPredPay, CollectPredPay, PostCollectPredPay, Review, PostReview ] then
+                                Just
+                                    (textA (formatPayoff <| pay * payoffScale)
+                                        TAMiddle
+                                        { x = tfCpr.x <| payoffs.opp + 0.02 * lambda
+                                        , y = tfCpr.y <| payoffs.slf + dlPredPaySep
+                                        , size = fBarNumber
+                                        }
+                                        |> id predPayId
+                                        |> fill (hOpp lBarNumber)
+                                        |> tabularNums
+                                    )
+
+                            else
+                                Nothing
+
+                        predPayText =
+                            predPay |> M.andThen getPredPayText
+
+                        numberLength =
+                            DI.get predPayId game.textLengths
+
+                        getMovingNumber pay nl { x, y, v } =
+                            viewMovingNumber { x = x, y = y, v = v, w = nl, payoff = pay, hue = hPtt }
+
+                        movingNumber =
+                            M.map3 getMovingNumber predPay numberLength game.slfAnimationState
                     in
-                    [ circle { x = cSliderX, y = cSliderY, r = 7.5 }
-                        |> stroke (hPtt 10) 2
-                        |> fill (setAlpha 0.5 <| hPtt 17)
-                    ]
-
-        memoryLabel =
-            if game.stage == Memory then
-                [ textC "Memory check" { x = 150, y = 150, size = 20 } ]
-
-            else
-                []
+                    L.concat [ [ predThumb ], maybeToList predPayText, maybeListToList movingNumber ]
 
         { slfPay, oppPay, confirmButton, othersLambda } =
             case game.lambda of
@@ -1088,10 +1296,10 @@ viewGame p game =
                             calcPayoffs p.boardConfig lambda
 
                         cSliderX =
-                            tfC.x payoffs.slf
+                            tfC.x payoffs.opp
 
                         cSliderY =
-                            tfC.y payoffs.opp
+                            tfC.y payoffs.slf
 
                         thumb =
                             circle { x = cSliderX, y = cSliderY, r = 7.5 }
@@ -1102,43 +1310,44 @@ viewGame p game =
                         button =
                             case game.stage of
                                 Act ->
-                                    viewButton { x = cCenterX + 140, y = tfPtt.y clIconY, w = 120, h = 50, text = "Confirm", clickMsg = GoTo PostAct, id = Just confirmButtonId }
+                                    viewButton { x = tfPtt.x clIconX, y = cCenterY + 200, w = 120, h = 50, text = "Confirm", clickMsg = GoTo PostAct, id = Just confirmButtonId }
 
                                 Review ->
                                     viewButton
-                                        { x = cCenterX + 140
-                                        , y = tfPtt.y clIconY
+                                        { x = tfPtt.x clIconX
+                                        , y = cCenterY + 200
                                         , w = 140
                                         , h = 50
                                         , text = "Next round"
                                         , clickMsg =
-                                            GoTo
-                                                (if p.memory then
-                                                    Memory
+                                            if p.memory then
+                                                GoTo Memory
 
-                                                 else
-                                                    Act
-                                                )
-                                        , id = Nothing
+                                            else
+                                                NextRound
+                                        , id = Just confirmButtonId
                                         }
 
                                 Memory ->
-                                    viewButton { x = cCenterX + 140, y = tfPtt.y clIconY, w = 140, h = 50, text = "Next round", clickMsg = GoTo Act, id = Nothing }
+                                    viewButton { x = tfPtt.x clIconX, y = cCenterY + 200, w = 140, h = 50, text = "Next round", clickMsg = NextRound, id = Nothing }
 
                                 _ ->
                                     []
 
-                        slfMovingBarNumber =
-                            case game.slfAnimationState of
-                                Nothing ->
-                                    []
+                        slfBarNumberLength =
+                            DI.get slfBarNumberId game.textLengths
 
-                                Just { x, y, v } ->
-                                    let
-                                        slfBarNumberLength =
-                                            M.withDefault 0 <| DI.get slfBarNumberId game.textLengths
-                                    in
-                                    viewMovingBarNumber { x = x, y = y, v = v, w = slfBarNumberLength, payoff = payoffs.slf, hue = hSlf }
+                        getSlfMovingBarNumber nl { x, y, v } =
+                            if game.stage == CollectPays then
+                                Just <| viewMovingNumber { x = x, y = y, v = v, w = nl, payoff = payoffs.slf, hue = hSlf }
+
+                            else
+                                Nothing
+
+                        slfMovingBarNumber =
+                            M.map2 getSlfMovingBarNumber slfBarNumberLength game.slfAnimationState
+                                |> M.andThen identity
+                                |> maybeListToList
 
                         oppMovingBarNumber =
                             case game.oppAnimationState of
@@ -1147,36 +1356,38 @@ viewGame p game =
 
                                 Just { x, y, v } ->
                                     let
-                                        oppBarNumberLength =
+                                        numberLength =
                                             M.withDefault 0 <| DI.get oppBarNumberId game.textLengths
                                     in
-                                    viewMovingBarNumber { x = x, y = y, v = v, w = oppBarNumberLength, payoff = payoffs.opp, hue = hOppPayoff }
+                                    viewMovingNumber { x = x, y = y, v = v, w = numberLength, payoff = payoffs.opp, hue = hOppPayoff }
                     in
                     { slfPay =
                         [ -- slf leader
-                          line { x1 = cSliderX, y1 = cSliderY, x2 = cSliderX, y2 = tfC.y <| clSlfBarY + dlBarWidth / 2, arrow = Nothing }
+                          line { x1 = cSliderX, y1 = cSliderY, x2 = tfC.x <| clSlfBarX + dlBarWidth / 2, y2 = cSliderY, arrow = Nothing }
                             |> stroke (hSlf lLeader) dLeaderWidth
                             |> strokeDash dLeaderDash
                         , -- slf bar
-                          rectA (tfA west) { x = tfC.x 0, y = tfC.y clSlfBarY, w = payoffs.slf * dBoardSize, h = dlBarWidth * dBoardSize }
+                          rectA (tfA south) { x = tfC.x clSlfBarX, y = tfC.y 0, w = dlBarWidth * dBoardSize, h = payoffs.slf * dBoardSize }
                             |> fill (hSlf lBar)
                         , -- slf bar number
-                          textA (formatPayoff <| payoffs.slf * payoffScale) (tfTA Start) { x = tfC.x <| payoffs.slf + dlBarNumberHSep, y = tfC.y clSlfBarY, size = fBarNumber }
+                          textA (formatPayoff <| payoffs.slf * payoffScale) (tfTA End) { x = tfC.x <| clSlfBarX + dlBarWidth / 2, y = tfC.y <| payoffs.slf + dlBarNumberVSep, size = fBarNumber }
                             |> id slfBarNumberId
                             |> fill (hSlf lBarNumber)
+                            |> tabularNums
                         ]
                     , oppPay =
                         [ -- opp leader
-                          line { x1 = cSliderX, y1 = cSliderY, x2 = tfC.x <| clOppBarX + dlBarWidth / 2, y2 = cSliderY, arrow = Nothing }
+                          line { x1 = cSliderX, y1 = cSliderY, x2 = cSliderX, y2 = tfC.y <| clOppBarY + dlBarWidth / 2, arrow = Nothing }
                             |> stroke (hOppPayoff lLeader) dLeaderWidth
                             |> strokeDash dLeaderDash
                         , -- opp bar
-                          rectA (tfA south) { x = tfC.x clOppBarX, y = tfC.y 0, w = dlBarWidth * dBoardSize, h = payoffs.opp * dBoardSize }
+                          rectA (tfA west) { x = tfC.x 0, y = tfC.y clOppBarY, w = payoffs.opp * dBoardSize, h = dlBarWidth * dBoardSize }
                             |> fill (hOppPayoff lBar)
                         , -- opp bar number
-                          textA (formatPayoff <| payoffs.opp * payoffScale) (tfTA End) { x = tfC.x <| clOppBarX + dlBarWidth / 2, y = tfC.y <| payoffs.opp + dlBarNumberVSep, size = fBarNumber }
+                          textA (formatPayoff <| payoffs.opp * payoffScale) (tfTA Start) { x = tfC.x <| payoffs.opp + dlBarNumberHSep, y = tfC.y clOppBarY, size = fBarNumber }
                             |> id oppBarNumberId
                             |> fill (hOppPayoff lBarNumber)
+                            |> tabularNums
                         ]
                     , confirmButton = button
                     , othersLambda =
@@ -1200,20 +1411,20 @@ viewGame p game =
                     ]
 
                 GUPttIcon ->
-                    [ viewIcon { x = tfPtt.x 0.5, y = tfPtt.y clIconY, hue = hPtt }
+                    [ viewIcon { x = tfPtt.x clIconX, y = tfPtt.y 0.5, hue = hPtt }
                         |> id pttIconId
                     ]
 
                 GUCprIcon ->
-                    [ viewIcon { x = tfCpr.x 0.5, y = tfCpr.y clIconY, hue = hCpr }
+                    [ viewIcon { x = tfCpr.x clIconX, y = tfCpr.y 0.5, hue = hCpr }
                         |> id cprIconId
                     ]
 
                 GUPttTotal ->
-                    viewTotal { x = tfPtt.x clTotalX, y = tfPtt.y clIconY, hue = hPtt, text = formatPayoff game.pttTotal, id = Just pttTotalId }
+                    viewTotal { x = tfPtt.x clIconX, y = tfPtt.y clTotalY, hue = hPtt, text = formatPayoff game.pttTotal, id = Just pttTotalId }
 
                 GUCprTotal ->
-                    viewTotal { x = tfCpr.x clTotalX, y = tfCpr.y clIconY, hue = hCpr, text = "****", id = Nothing }
+                    viewTotal { x = tfCpr.x clIconX, y = tfCpr.y clTotalY, hue = hCpr, text = "****", id = Nothing }
 
                 GUSlfPay ->
                     slfPay
@@ -1233,31 +1444,59 @@ viewGame p game =
                 GUCprStatus ->
                     let
                         x =
-                            cCenterX - 80
+                            tfCpr.x clIconX + 80
 
                         y =
-                            tfCpr.y clIconY
-                    in
-                    if game.cprActed then
-                        [ complexCW check { x = x, y = y, w = 40 }
-                            |> fill (hCpr 10)
-                        ]
+                            cCenterY
 
-                    else
-                        L.map
-                            (\i ->
-                                let
-                                    shift =
-                                        rotatePoint (45 * toFloat (game.loadingStep + i)) { x = 0, y = 20 }
-                                in
-                                circle { x = x + shift.x, y = y + shift.y, r = 2.5 + toFloat i * 0.25 }
-                                    |> fill (hCpr <| 18 - i)
-                            )
-                        <|
-                            L.range 0 7
+                        fg =
+                            if game.cprActed then
+                                [ complexCW check { x = x, y = y, w = 40 }
+                                    |> fill (hCpr 10)
+                                ]
+
+                            else
+                                L.map
+                                    (\i ->
+                                        let
+                                            shift =
+                                                rotatePoint (45 * toFloat (game.loadingStep + i)) <| xy 0 20
+                                        in
+                                        circle { x = x + shift.x, y = y + shift.y, r = 2.5 + toFloat i * 0.25 }
+                                            |> fill (hCpr <| 18 - i)
+                                    )
+                                <|
+                                    L.range 0 7
+
+                        bg =
+                            rectC { x = x, y = y, w = 50, h = 50 }
+                                |> fill transparent
+                                |> id cprStatusId
+                    in
+                    bg :: fg
 
                 GUOthers ->
-                    L.concat [ [ background ], predictionThumb, memoryLabel, othersLambda ]
+                    L.concat [ [ background ], pred, othersLambda ]
+
+        instr =
+            if p.isTtrl then
+                []
+
+            else
+                M.withDefault []
+                    << M.map
+                        (\t ->
+                            buildMessage
+                                { x = cCenterX
+                                , y = (cCenterY - dBoardSize / 2) / 2
+                                , anchor = xy 0.5 0.5
+                                , text = t
+                                , prefix = gameInstrId
+                                , instrLength = game.instrLength
+                                }
+                        )
+                <|
+                    getGameInstrText p.player game.stage
     in
     filterElements p.show
         [ GUBoard
@@ -1273,6 +1512,7 @@ viewGame p game =
         , GUOthers
         ]
         getElement
+        ++ instr
 
 
 viewIcon : { x : Float, y : Float, hue : Hue } -> Element msg
@@ -1293,19 +1533,21 @@ viewTotal c =
 viewButton : { x : Float, y : Float, w : Float, h : Float, text : String, clickMsg : msg, id : Maybe String } -> List (Element msg)
 viewButton c =
     [ rectC { x = c.x, y = c.y, w = c.w, h = c.h }
-        |> fill C.white
-        |> stroke C.black 2
+        |> fill CO.white
+        |> stroke CO.black 2
         |> hoverFill (grays 18)
         |> activeFill (grays 16)
         |> pointerEvents VisiblePainted
         |> onClick c.clickMsg
         |> M.withDefault identity (M.map id c.id)
+        |> onLayer 4
     , textC c.text { x = c.x, y = c.y, size = 24 }
+        |> onLayer 4
     ]
 
 
-viewMovingBarNumber : { x : Float, y : Float, v : Float, w : Float, payoff : Float, hue : Hue } -> List (Element msg)
-viewMovingBarNumber c =
+viewMovingNumber : { x : Float, y : Float, v : Float, w : Float, payoff : Float, hue : Hue } -> List (Element msg)
+viewMovingNumber c =
     let
         scale =
             1 + c.v / 10
@@ -1314,9 +1556,12 @@ viewMovingBarNumber c =
             5
     in
     [ rRectC { x = c.x, y = c.y, w = (c.w + r * 2) * scale, h = (fBarNumber + r * 2) * scale, r = r * scale }
-        |> fill C.white
+        |> fill CO.white
+        |> onLayer 1
     , textC (formatPayoff <| c.payoff * payoffScale) { x = c.x, y = c.y, size = fBarNumber * scale }
         |> fill (c.hue lBarNumber)
+        |> tabularNums
+        |> onLayer 1
     ]
 
 
@@ -1334,19 +1579,42 @@ viewRoundCounter c =
                 ( "Your turn", hPtt )
 
             else
-                ( "Their turn", hCpr )
+                ( "Blue’s turn", hCpr )
 
         offset =
             15
     in
     [ rRectC { x = x, y = y, w = 150, h = 80, r = 10 }
-        |> fill C.white
+        |> fill CO.white
         |> stroke (grays 5) 2
     , textC ("Round " ++ ST.fromInt c.round ++ "/" ++ ST.fromInt c.totalRounds) { x = x, y = y - offset, size = 24 }
         |> fill (grays 5)
     , textC roleText { x = x, y = y + offset, size = 24 }
         |> fill (roleHue 10)
     ]
+
+
+viewStepCounter : Int -> List (Element msg)
+viewStepCounter s =
+    let
+        x =
+            120
+
+        y =
+            80
+
+        offset =
+            15
+    in
+    L.map (onLayer 2)
+        [ rRectC { x = x, y = y, w = 150, h = 80, r = 10 }
+            |> fill CO.white
+            |> stroke (grays 5) 2
+        , textC "[b|Tutorial]" { x = x, y = y - offset, size = 24 }
+            |> fill (grays 5)
+        , textC ("Step " ++ ST.fromInt s ++ "/" ++ ST.fromInt (A.length ttrlSteps)) { x = x, y = y + offset, size = 24 }
+            |> fill (grays 5)
+        ]
 
 
 
@@ -1391,7 +1659,7 @@ subscriptions m =
             BE.onResize (\_ _ -> WindowResize)
 
         loadingStep =
-            if activeGame.cprActed || activeGame.stage == PreAct || not (isShowing GUCprStatus gameProps.show) then
+            if activeGame.cprActed || not (isShowing GUCprStatus gameProps.show) then
                 Sub.none
 
             else
@@ -1407,6 +1675,22 @@ subscriptions m =
                         [ Sub.map NormalGameMsg <| subsToWrap t.game
                         , Sub.map TestTtrlGameMsg <| subsToWrap t.ttrl.game
                         ]
+
+        keyDecoder : D.Decoder Msg
+        keyDecoder =
+            D.map keyToMsg (D.field "key" D.string)
+
+        keyToMsg : String -> Msg
+        keyToMsg s =
+            case s of
+                "k" ->
+                    PrevStep
+
+                "j" ->
+                    NextStep False
+
+                _ ->
+                    NoOp
     in
     Sub.batch
         [ stateLoaded (StateLoaded << D.decodeValue modelDecoder)
@@ -1416,6 +1700,7 @@ subscriptions m =
         , windowResize
         , loadingStep
         , wrappedSubs
+        , BE.onKeyDown keyDecoder
         ]
 
 
@@ -1423,7 +1708,7 @@ subsToWrap : GameModel -> Sub Msg
 subsToWrap game =
     let
         animationFrame =
-            if game.stage == Collect then
+            if L.member game.stage [ CollectPays, CollectPredPay ] then
                 BE.onAnimationFrame (Time.posixToMillis >> Animate)
 
             else
@@ -1434,6 +1719,16 @@ subsToWrap game =
 
 
 -- CONSTANTS --
+
+
+initStage : ExptStage
+initStage =
+    ESTest
+
+
+ttrlWaitSpeedRatio : Float
+ttrlWaitSpeedRatio =
+    1
 
 
 dFullWidth : Float
@@ -1453,12 +1748,12 @@ dBoardSize =
 
 dlIconOffset : Float
 dlIconOffset =
-    100 / dBoardSize
+    150 / dBoardSize
 
 
 dlTotalOffset : Float
 dlTotalOffset =
-    130 / dBoardSize
+    100 / dBoardSize
 
 
 dlBarSep : Float
@@ -1491,6 +1786,11 @@ dlBarNumberVSep =
     16 / dBoardSize
 
 
+dlPredPaySep : Float
+dlPredPaySep =
+    25 / dBoardSize
+
+
 cCenterX : Float
 cCenterX =
     dFullWidth / 2
@@ -1498,16 +1798,16 @@ cCenterX =
 
 cCenterY : Float
 cCenterY =
-    dFullHeight / 2
+    dFullHeight / 2 - 20
 
 
-clIconY : Float
-clIconY =
+clIconX : Float
+clIconX =
     -dlIconOffset
 
 
-clTotalX : Float
-clTotalX =
+clTotalY : Float
+clTotalY =
     0.5 - dlTotalOffset
 
 
@@ -1521,13 +1821,13 @@ cNwY =
     cCenterY - dBoardSize / 2
 
 
-clSlfBarY : Float
-clSlfBarY =
+clOppBarY : Float
+clOppBarY =
     -dlBarSep
 
 
-clOppBarX : Float
-clOppBarX =
+clSlfBarX : Float
+clSlfBarX =
     -dlBarSep
 
 
@@ -1546,6 +1846,7 @@ colorsDict =
     DI.fromList
         [ ( "ptt", hPtt 10 )
         , ( "cpr", hCpr 10 )
+        , ( "discard", grays 10 )
         ]
 
 
@@ -1566,7 +1867,7 @@ lBarNumber =
 
 fBarNumber : Float
 fBarNumber =
-    18
+    20
 
 
 boardId : String
@@ -1584,6 +1885,11 @@ thumbId =
     "thumb"
 
 
+predictionThumbId : String
+predictionThumbId =
+    "predictionThumb"
+
+
 slfBarNumberId : String
 slfBarNumberId =
     "slfBarNumber"
@@ -1594,9 +1900,24 @@ oppBarNumberId =
     "oppBarNumber"
 
 
+predPayId : String
+predPayId =
+    "predPay"
+
+
 prevButtonId : String
 prevButtonId =
     "prevButton"
+
+
+nextButtonId : String
+nextButtonId =
+    "nextButton"
+
+
+cprStatusId : String
+cprStatusId =
+    "cprStatus"
 
 
 pttIconId : String
@@ -1614,9 +1935,14 @@ pttTotalId =
     "pttTotal"
 
 
-instrId : String
-instrId =
-    "message"
+ttrlInstrId : String
+ttrlInstrId =
+    "ttrlInstr"
+
+
+gameInstrId : String
+gameInstrId =
+    "gameInstr"
 
 
 confirmButtonId : String
@@ -1649,7 +1975,7 @@ defaultStep =
             { x = 0
             , y = 0
             , text = ""
-            , anchor = { x = 0, y = 0 }
+            , anchor = xy 0 0
             , dim = False
             }
     , proceed = ProceedAfterWait 0
@@ -1665,15 +1991,15 @@ ttrlSteps =
             | gameShow = ShowSome [ GUOthers ]
             , instr =
                 Callout
-                    { target = prevButtonId
+                    { target = nextButtonId
                     , sep = 10
                     , text = dedent """
-                        In this tutorial,
-                        use these two buttons
-                        to step forward/backward.
+                        Let's start with a [b|tutorial] of the experiment.
+                        It takes about 4 minutes. In this tutorial,
+                        use these two buttons to step forward/backward.
                         """
-                    , targetAnchor = { x = 0, y = 0 }
-                    , instrAnchor = { x = 1, y = 1 }
+                    , targetAnchor = xy 0.6 0
+                    , instrAnchor = xy 0.4 1
                     }
           }
         , { defaultStep
@@ -1686,8 +2012,8 @@ ttrlSteps =
                         In this experiment,
                         you are the [ptt b|red] player.
                         """
-                    , targetAnchor = { x = 0, y = 0 }
-                    , instrAnchor = { x = 1, y = 1 }
+                    , targetAnchor = xy 1 0
+                    , instrAnchor = xy 0 1
                     }
             , proceed = ProceedAfterWait 1.5
           }
@@ -1701,8 +2027,8 @@ ttrlSteps =
                         You start with a total reward of 0
                         (in an arbitrary unit).
                         """
-                    , targetAnchor = { x = 0.5, y = 0 }
-                    , instrAnchor = { x = 0.5, y = 1 }
+                    , targetAnchor = xy 1 0
+                    , instrAnchor = xy 0 1
                     }
             , proceed = ProceedAfterWait 1.5
           }
@@ -1721,10 +2047,10 @@ ttrlSteps =
                         and they walk through exactly the same tutorial
                         as you do now.
                         """
-                    , targetAnchor = { x = 0.5, y = 1 }
-                    , instrAnchor = { x = 0.5, y = 0 }
+                    , targetAnchor = xy 0 0
+                    , instrAnchor = xy 1 1
                     }
-            , proceed = ProceedAfterWait 5
+            , proceed = ProceedAfterWait 6
           }
         , { defaultStep
             | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard ]
@@ -1737,10 +2063,10 @@ ttrlSteps =
                         making decisions on this square board.
                         Now let's see what [ptt|your turn] looks like.
                         """
-                    , targetAnchor = { x = 0.4, y = 0.6 }
-                    , instrAnchor = { x = 1, y = 0 }
+                    , targetAnchor = xy 0.7 0.2
+                    , instrAnchor = xy 0.3 1
                     }
-            , proceed = ProceedAfterWait 1.5
+            , proceed = ProceedAfterWait 2
           }
         , { defaultStep
             | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider ]
@@ -1752,8 +2078,8 @@ ttrlSteps =
                         There is a [b|curve] on the board.
                         Now click somewhere on the curve.
                         """
-                    , targetAnchor = { x = 0.5, y = 0 }
-                    , instrAnchor = { x = 0, y = 0.5 }
+                    , targetAnchor = xy 0.5 0
+                    , instrAnchor = xy 0.2 1
                     }
             , proceed = ProceedOnMsg touched
             , gameMsg = Just <| GoTo Act
@@ -1767,11 +2093,11 @@ ttrlSteps =
                     , sep = 5
                     , text = dedent """
                         The curve is actually a slider track.
-                        Now try sliding the “handle”
+                        Now try dragging the “handle”
                         along the track.
                         """
-                    , targetAnchor = { x = 1, y = 0.5 }
-                    , instrAnchor = { x = 0, y = 0.5 }
+                    , targetAnchor = xy 1 0
+                    , instrAnchor = xy 0.2 1
                     }
             , proceed = ProceedOnMsg touched
           }
@@ -1780,17 +2106,15 @@ ttrlSteps =
             , instr =
                 Callout
                     { target = slfBarNumberId
-                    , sep = 5
+                    , sep = 10
                     , text = dedent """
-                        The [b|horizontal] location of the handle
+                        The [b|vertical] location of the handle
                         corresponds to a [ptt b|reward for you],
-                        which is proportional to
-                        the length of the [ptt b|red bar].
-                        Now slide the handle
-                        to see how the reward changes.
+                        which is proportional to the length of the [ptt b|red bar].
+                        Now drag the handle to see how the reward changes.
                         """
-                    , targetAnchor = { x = 1, y = 0 }
-                    , instrAnchor = { x = 0.1, y = 1 }
+                    , targetAnchor = xy 0.8 0
+                    , instrAnchor = xy 0.2 1
                     }
             , proceed = ProceedOnMsg touched
             , cmd = Just << getBarNumberLengths <| ShowSome [ GUSlfPay ]
@@ -1800,15 +2124,18 @@ ttrlSteps =
             , instr =
                 Callout
                     { target = oppBarNumberId
-                    , sep = 5
+                    , sep = 10
                     , text = dedent """
-                        The [b|vertical] location of the handle
-                        corresponds to a [cpr b|reward for Blue],
-                        which is proportional to the length of the [cpr b|blue bar].
-                        Now slide the handle to see how the reward changes.
+                        The [b|horizontal] location
+                        of the handle corresponds to
+                        a [cpr b|reward for Blue],
+                        which is proportional to
+                        the length of the [cpr b|blue bar].
+                        Now drag the handle to see
+                        how the reward changes.
                         """
-                    , targetAnchor = { x = 1, y = 0 }
-                    , instrAnchor = { x = 0, y = 0.8 }
+                    , targetAnchor = xy 0.8 0
+                    , instrAnchor = xy 0.15 1
                     }
             , proceed = ProceedOnMsg touched
             , cmd = Just << getBarNumberLengths <| ShowSome [ GUOppPay ]
@@ -1817,14 +2144,13 @@ ttrlSteps =
             | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay ]
             , instr =
                 StaticInstr
-                    { x = cCenterX + dBoardSize / 2 + 10
-                    , y = cCenterY
+                    { x = cCenterX
+                    , y = cCenterY - dBoardSize / 2 - 40
                     , text = dedent """
-                        Now slide the handle to see
-                        how both rewards
-                        change simultaneously.
+                        Now drag the handle to see
+                        how both rewards change simultaneously.
                         """
-                    , anchor = { x = 0, y = 0.5 }
+                    , anchor = xy 0.5 1
                     , dim = False
                     }
             , proceed = ProceedOnMsg touched
@@ -1837,58 +2163,407 @@ ttrlSteps =
                     { target = confirmButtonId
                     , sep = 5
                     , text = dedent """
-                        Slide the handle to the position
-                        where the [b|two rewards]
-                        look the best to you.
+                        Drag the handle to the position
+                        where the [b|two rewards] look the best to you.
                         After that, click the “Confirm” button.
                         """
-                    , targetAnchor = { x = 1, y = 0 }
-                    , instrAnchor = { x = 0.22, y = 1 }
+                    , targetAnchor = xy 1 0.9
+                    , instrAnchor = xy 0 0.1
                     }
             , proceed = ProceedOnMsg (\m _ -> m == GoTo PostAct)
           }
         , { defaultStep
-            | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay, GUConfirmButton ]
+            | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay ]
             , instr =
                 StaticInstr
-                    { x = cCenterX + dBoardSize / 2 - 10
-                    , y = cCenterY
+                    { x = cCenterX
+                    , y = cCenterY - dBoardSize / 2 - 40
                     , text = dedent """
                         Then the two rewards will be added
-                        to [ptt|your total] and [cpr|Blue’s total].
+                        to [ptt|your total] and [cpr|Blue's total].
                         """
-                    , anchor = { x = 0, y = 0.5 }
+                    , anchor = xy 0.5 1
                     , dim = False
                     }
-            , proceed =
-                ProceedOnMsg
-                    (\msg model ->
-                        case msg of
-                            Animate t ->
-                                (updateAnimate t model.game (ttrlGameProps model) |> .stage) == PostCollect
-
-                            _ ->
-                                False
-                    )
-            , cmd = P.sleep 1000 |> T.perform (always <| GoTo Collect) |> Just
+            , proceed = ProceedOnMsg collected
+            , cmd = P.sleep 1000 |> T.perform (always <| GoTo CollectPays) |> Just
+          }
+        , { defaultStep
+            | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay ]
+            , instr =
+                Callout
+                    { target = pttTotalId
+                    , sep = 5
+                    , text = dedent """
+                        At the end of the experiment, you will be given
+                        a [b|real monetary bonus] according to [ptt|your total reward]
+                        (not the exact amount, but a transformation of it).
+                        The higher your total reward is, the higher
+                        your bonus will be. [b|Same for ][cpr b|Blue].
+                        """
+                    , targetAnchor = xy 1 0
+                    , instrAnchor = xy 0 1
+                    }
+            , proceed = ProceedAfterWait 4
+          }
+        , { defaultStep
+            | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay ]
+            , instr =
+                Callout
+                    { target = thumbId
+                    , sep = 5
+                    , text = dedent """
+                        After the rewards are collected, you can drag [ptt|your handle]
+                        to review the options that were available to you.
+                        Once you release the mouse, the handle will return
+                        to [ptt|your actual decision]. Now try dragging [ptt|your handle].
+                        """
+                    , targetAnchor = xy 0.5 0
+                    , instrAnchor = xy 0.5 1
+                    }
+            , proceed = ProceedOnMsg touched
+            , gameMsg = Just <| GoTo Review
+          }
+        , { defaultStep
+            | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay, GUConfirmButton ]
+            , instr =
+                Callout
+                    { target = confirmButtonId
+                    , sep = 5
+                    , text = dedent """
+                        Once you are done reviewing,
+                        click the “Next round” button
+                        to go to the next round.
+                        """
+                    , targetAnchor = xy 1 0.9
+                    , instrAnchor = xy 0 0.1
+                    }
+            , proceed = ProceedOnMsg (\m _ -> m == NextRound)
+          }
+        , { defaultStep
+            | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay ]
+            , instr =
+                Callout
+                    { target = sliderId
+                    , sep = 5
+                    , text = dedent """
+                        Now it's [cpr|Blue's] turn.
+                        [cpr|Blue] also makes a decision
+                        on a slider on the board.
+                        """
+                    , targetAnchor = xy 0.5 0
+                    , instrAnchor = xy 0.8 1
+                    }
+            , player = Cpr
+            , proceed = ProceedAfterWait 2
+            , gameMsg = Just <| GoTo PreAct
+          }
+        , { defaultStep
+            | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay, GUCprStatus ]
+            , instr =
+                Callout
+                    { target = cprStatusId
+                    , sep = 5
+                    , text = dedent """
+                        When [cpr|Blue] is thinking,
+                        this icon will be displayed.
+                        """
+                    , targetAnchor = xy 0.2 0
+                    , instrAnchor = xy 0.8 1
+                    }
+            , player = Cpr
+            , proceed = ProceedAfterWait 1.5
+          }
+        , { defaultStep
+            | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay, GUCprStatus ]
+            , instr =
+                Callout
+                    { target = cprStatusId
+                    , sep = 5
+                    , text = dedent """
+                        When [cpr|Blue] has made a decision,
+                        the icon will change to a check mark.
+                        """
+                    , targetAnchor = xy 0.2 0
+                    , instrAnchor = xy 0.8 1
+                    }
+            , player = Cpr
+            , proceed = ProceedAfterWait 1.5
+            , gameMsg = Just CprAct
+          }
+        , { defaultStep
+            | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay, GUCprStatus ]
+            , instr =
+                StaticInstr
+                    { x = cCenterX + 30
+                    , y = 10
+                    , text = dedent """
+                        When [cpr|Blue] is making their decision, you need to predict
+                        where [cpr|Blue] will place the handle. Now drag the handle
+                        to the location that reflects your prediction, in the same way
+                        you made your decision in your turn. Note that now the [b|horizontal] bar
+                        is the reward for [ptt b|you] and the [b|vertical] bar is the reward for [cpr b|Blue].
+                        """
+                    , anchor = xy 0.5 0
+                    , dim = False
+                    }
+            , player = Cpr
+            , proceed = ProceedOnMsg touched
+            , gameMsg = Just <| GoTo Act
+          }
+        , { defaultStep
+            | gameShow = ShowAll
+            , instr =
+                Callout
+                    { target = thumbId
+                    , sep = 5
+                    , text = dedent """
+                        After you click the “Confirm” button, your
+                        confirmed prediction will be represented by a red circle.
+                        [cpr|Blue] won't be able to see your prediction.
+                        Now click the “Confirm” button.
+                        """
+                    , targetAnchor = xy 0.5 0
+                    , instrAnchor = xy 0.5 1
+                    }
+            , player = Cpr
+            , proceed = ProceedOnMsg (\m _ -> m == GoTo PostAct)
           }
         , { defaultStep
             | gameShow = ShowAll
             , instr =
                 StaticInstr
-                    { x = dFullWidth / 2
-                    , y = dFullHeight / 2
-                    , text = "Some text"
-                    , anchor = { x = 0.5, y = 0.5 }
+                    { x = cCenterX
+                    , y = 30
+                    , text = dedent """
+                        When both [ptt|you] have made your prediction
+                        and [cpr|Blue] has made their decision,
+                        [cpr|Blue's] decision will be revealed,
+                        and the actual rewards will be collected.
+                        """
+                    , anchor = xy 0.5 0
+                    , dim = False
+                    }
+            , player = Cpr
+            , proceed = ProceedOnMsg collected
+            , gameMsg = Just CprAct
+            , cmd = P.sleep 1000 |> T.perform (always <| GoTo ShowCpr) |> Just
+          }
+        , { defaultStep
+            | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay, GUCprStatus ]
+            , instr =
+                Callout
+                    { target = thumbId
+                    , sep = 5
+                    , text = dedent """
+                        Like in your turn, after the rewards are collected,
+                        you can drag [cpr|Blue's handle] to review the options
+                        that were available to them. Now try dragging [cpr|Blue's handle].
+                        """
+                    , targetAnchor = xy 0.5 0
+                    , instrAnchor = xy 0.5 1
+                    }
+            , player = Cpr
+            , proceed = ProceedOnMsg touched
+            , gameMsg = Just <| GoTo Review
+          }
+        , { defaultStep
+            | gameShow = ShowAll
+            , instr =
+                Callout
+                    { target = cprStatusId
+                    , sep = 5
+                    , text = dedent """
+                        When you are making your decision in [ptt|your turn],
+                        [cpr|Blue] is also predicting your decision.
+                        """
+                    , targetAnchor = xy 0.2 0
+                    , instrAnchor = xy 0.8 1
+                    }
+            , proceed = ProceedAfterWait 2
+            , gameMsg = Just <| GoTo PreAct
+          }
+        , { defaultStep
+            | gameShow = ShowAll
+            , instr =
+                Callout
+                    { target = cprStatusId
+                    , sep = 5
+                    , text = dedent """
+                        When [cpr|Blue] has confirmed their prediction,
+                        this icon will change to a check mark.
+                        You won't be able to see [cpr|Blue's] prediction either.
+                        """
+                    , targetAnchor = xy 0.2 0
+                    , instrAnchor = xy 0.8 1
+                    }
+            , proceed = ProceedAfterWait 3
+            , gameMsg = Just CprAct
+          }
+        , { defaultStep
+            | gameShow = ShowAll
+            , instr =
+                StaticInstr
+                    { x = cCenterX
+                    , y = cCenterY
+                    , text = dedent """
+                        To recap, when it's [ptt|your turn]:
+                        (1) You make a decision on [ptt|your slider],
+                        while [cpr|Blue] predicts your decision;
+                        (2) You click “Confirm” to confirm your decision;
+                        (3) The rewards are collected; and
+                        (4) You review the available options for [ptt|yourself].
+                        """
+                    , anchor = xy 0.5 0.5
                     , dim = True
                     }
-            , proceed = ProceedAfterWait 0
+            , proceed = ProceedAfterWait 6
+          }
+        , { defaultStep
+            | gameShow = ShowAll
+            , instr =
+                StaticInstr
+                    { x = cCenterX
+                    , y = cCenterY
+                    , text = dedent """
+                        When it's [cpr|Blue's turn]:
+                        (1) [cpr|Blue] makes a decision on [cpr|their slider],
+                        while [ptt|you] predict their decision;
+                        (2) You click “Confirm” to confirm your prediction;
+                        (3) Your prediction changes to a [ptt|red circle];
+                        (4) [cpr|Blue's decision] is revealed;
+                        (5) The rewards are collected; and
+                        (6) You review the available options for [cpr|Blue].
+                        """
+                    , anchor = xy 0.5 0.5
+                    , dim = True
+                    }
+            , player = Cpr
+            , proceed = ProceedAfterWait 6
+          }
+        , { defaultStep
+            | gameShow = ShowAll
+            , instr =
+                StaticInstr
+                    { x = cCenterX
+                    , y = cCenterY
+                    , text = dedent """
+                        The [b|locations] of [ptt|your slider] and [cpr|Blue's slider] change from round to round,
+                        which means the possible combinations of the [ptt|reward for you]
+                        and the [cpr|reward for Blue] are different across rounds.
+                        So pay attention to how the [b|actual rewards]
+                        compare with the available options [b|in each round].
+                        """
+                    , anchor = xy 0.5 0.5
+                    , dim = True
+                    }
+            , proceed = ProceedAfterWait 5
+          }
+        , { defaultStep
+            | gameShow = ShowAll
+            , instr =
+                StaticInstr
+                    { x = cCenterX
+                    , y = cCenterY
+                    , text = dedent """
+                        There are 3 types of [b|special rounds] interspersed among all the rounds,
+                        which are explained in the next 3 steps of this tutorial.
+                        [cpr|Blue] also has these special rounds.
+                        """
+                    , anchor = xy 0.5 0.5
+                    , dim = True
+                    }
+            , proceed = ProceedAfterWait 3
+          }
+        , { defaultStep
+            | gameShow = ShowAll
+            , instr =
+                Callout
+                    { target = oppBarNumberId
+                    , sep = 5
+                    , text = dedent """
+                        In the first type of special rounds,
+                        the color of the [b|horizontal] reward
+                        will be [b discard|gray], which indicates that this reward
+                        will be [b|discarded] instead of being given to [cpr|Blue]
+                        (or [ptt|you] when it's [cpr|Blue's turn]).
+                        """
+                    , targetAnchor = xy 0.9 0
+                    , instrAnchor = xy 0.1 1
+                    }
+            , oppReceiver = Discard
+            , proceed = ProceedAfterWait 4
+            , gameMsg = Just <| GoTo PostAct
+            , cmd = Just <| getBarNumberLengths ShowAll
+          }
+        , { defaultStep
+            | gameShow = ShowAll
+            , instr =
+                Callout
+                    { target = oppBarNumberId
+                    , sep = 5
+                    , text = dedent """
+                        In the second type of special rounds,
+                        the color of the [b|horizontal] reward
+                        will be [b ptt|red] (or [b cpr|blue] when it's [cpr|Blue's turn]),
+                        which indicates that this reward
+                        will be given to [b ptt|you] instead of [cpr|Blue]
+                        (or [b cpr|blue] instead of [ptt|you] when it's [cpr|Blue's turn]),
+                        [b|in addition to] the usual [b|vertical] reward.
+                        """
+                    , targetAnchor = xy 0.9 0
+                    , instrAnchor = xy 0.1 1
+                    }
+            , oppReceiver = Slf
+            , proceed = ProceedAfterWait 4
+          }
+        , { defaultStep
+            | gameShow = ShowAll
+            , instr =
+                StaticInstr
+                    { x = cCenterX
+                    , y = cCenterY
+                    , text = dedent """
+                        In the third type of special rounds (called [b|Memory Checks]),
+                        after you click “Next round”, you will be asked to reproduce
+                        the locations of [ptt|your handle] (or [cpr|Blue's handle] when it's [cpr|Blue's turn])
+                        on the slider. The reproduced location doesn't have to be
+                        exactly the same as the true location, but try to be as close as possible
+                        to what you remember. [b|We reserve the right to reject your data]
+                        [b|if the errors in the reproductions are too large.]
+                        """
+                    , anchor = xy 0.5 0.5
+                    , dim = True
+                    }
+            , proceed = ProceedAfterWait 8
+          }
+        , { defaultStep
+            | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay, GUCprStatus ]
+            , instr =
+                StaticInstr
+                    { x = cCenterX
+                    , y = cCenterY - dBoardSize / 2 - 20
+                    , text = dedent """
+                        Now try to reproduce the location
+                        of the handle you just saw.
+                        (This one doesn't count.)
+                        """
+                    , anchor = xy 0.5 1
+                    , dim = False
+                    }
+            , proceed = ProceedOnMsg touched
+            , gameMsg = Just <| GoTo Memory
           }
         ]
 
 
 
 -- HELPER FUNCTIONS --
+
+
+set : ((a -> a) -> b -> b) -> a -> b -> b
+set setter =
+    setter << always
 
 
 maybeSet : ((a -> a) -> b -> b) -> Maybe a -> b -> b
@@ -1924,9 +2599,38 @@ setGame f m =
                 Test { t | game = f t.game }
 
 
-setInstrLength : (Maybe Float -> Maybe Float) -> TtrlModel -> TtrlModel
-setInstrLength f m =
+setTtrlGame : (GameModel -> GameModel) -> TtrlModel -> TtrlModel
+setTtrlGame f m =
+    { m | game = f m.game }
+
+
+setTtrlInstrLength : (Maybe Float -> Maybe Float) -> TtrlModel -> TtrlModel
+setTtrlInstrLength f m =
     { m | instrLength = f m.instrLength }
+
+
+setTestInstrLength : (Maybe Float -> Maybe Float) -> TestModel -> TestModel
+setTestInstrLength f m =
+    { m | instrLength = f m.instrLength }
+
+
+setGameInstrLength : (Maybe Float -> Maybe Float) -> GameModel -> GameModel
+setGameInstrLength f m =
+    { m | instrLength = f m.instrLength }
+
+
+setGameStage : (GameStage -> GameStage) -> GameModel -> GameModel
+setGameStage f m =
+    { m | stage = f m.stage }
+
+
+updateInstrLength : String -> ((Maybe Float -> Maybe Float) -> a -> a) -> TextLengths -> a -> a
+updateInstrLength prefix setter ls model =
+    let
+        maybeInstrLength =
+            L.maximum << DI.values <| DI.filter (\k _ -> ST.startsWith prefix k) ls
+    in
+    model |> (maybeSet setter << M.map Just <| maybeInstrLength)
 
 
 addElements : String -> (Element msg -> List (Element msg)) -> List (Element msg) -> List (Element msg)
@@ -1970,37 +2674,37 @@ tfPtt =
 
 tfCpr : CTransforms
 tfCpr =
-    { x = \x -> cNwX + (1 - x) * dBoardSize, y = \y -> cNwY + y * dBoardSize }
+    { x = \x -> cNwX + (1 - x) * dBoardSize, y = \y -> cNwY + (1 - y) * dBoardSize }
 
 
 calcParabola : BoardConfig -> QBezierConfig
-calcParabola { location, vx, vy, scale } =
+calcParabola { location, vy, vx, scale } =
     let
-        xBottom =
-            vx - vy ^ 2 / scale
+        yLeft =
+            vy - vx ^ 2 / scale
 
-        ( x1, y1 ) =
-            if xBottom >= 0 then
-                ( xBottom, 0 )
-
-            else
-                ( 0, vy - sqrt (vx * scale) )
-
-        xTop =
-            vx - (1 - vy) ^ 2 / scale
-
-        ( x2, y2 ) =
-            if xTop >= 0 then
-                ( xTop, 1 )
+        ( y1, x1 ) =
+            if yLeft >= 0 then
+                ( yLeft, 0 )
 
             else
-                ( 0, vy + sqrt (vx * scale) )
+                ( 0, vx - sqrt (vy * scale) )
 
-        cx =
-            x1 + (vy - y1) / scale * (y2 - y1)
+        yRight =
+            vy - (1 - vx) ^ 2 / scale
+
+        ( y2, x2 ) =
+            if yRight >= 0 then
+                ( yRight, 1 )
+
+            else
+                ( 0, vx + sqrt (vy * scale) )
 
         cy =
-            (y1 + y2) / 2
+            y1 + (vx - x1) / scale * (x2 - x1)
+
+        cx =
+            (x1 + x2) / 2
 
         { xTf, yTf } =
             sliderLocationToTfs location
@@ -2014,14 +2718,19 @@ tfParabola { x, y } c =
 
 
 calcPayoffs : BoardConfig -> Float -> { slf : Float, opp : Float }
-calcPayoffs { location, vx, vy, scale } lambda =
+calcPayoffs { location, vy, vx, scale } lambda =
     let
         { xTf, yTf } =
             sliderLocationToTfs location
     in
-    { slf = xTf << max 0 <| vx - lambda ^ 2 / 4 * scale
-    , opp = yTf << max 0 <| vy + lambda / 2 * scale
+    { opp = xTf << max 0 <| vx + lambda / 2 * scale
+    , slf = yTf << max 0 <| vy - lambda ^ 2 / 4 * scale
     }
+
+
+calcPredPayoff : Float -> Float -> Float
+calcPredPayoff l1 l2 =
+    max 0 <| 0.1 - 0.1 * abs (l1 - l2)
 
 
 formatPayoff : Float -> String
@@ -2049,20 +2758,20 @@ inBBox x y b =
     x > b.x && x < b.x + b.width && y > b.y && y < b.y + b.height
 
 
-localYPtt : Float -> BBox -> Float
-localYPtt y b =
-    1 - (y - b.y) / b.height
+localXPtt : Float -> BBox -> Float
+localXPtt x b =
+    (x - b.x) / b.width
 
 
-localYCpr : Float -> BBox -> Float
-localYCpr y b =
-    (y - b.y) / b.height
+localXCpr : Float -> BBox -> Float
+localXCpr x b =
+    1 - (x - b.x) / b.width
 
 
-yToLambda : BoardConfig -> Float -> Float
-yToLambda c y =
+xToLambda : BoardConfig -> Float -> Float
+xToLambda c x =
     let
-        { y1, y2 } =
+        { x1, x2 } =
             calcParabola c
 
         extraScale =
@@ -2073,17 +2782,17 @@ yToLambda c y =
                 Quadrant _ ->
                     4
 
-        { yTf } =
+        { xTf } =
             sliderLocationToTfs c.location
     in
-    (clamp y1 y2 y - yTf c.vy) / c.scale * extraScale
+    (clamp x1 x2 x - xTf c.vx) / c.scale * extraScale
 
 
 defaultBoardConfig : BoardConfig
 defaultBoardConfig =
     -- lambda_min = -1.5
     -- lambda_max = 2.5
-    { location = FullBoard, vx = 0.78125, vy = 0.375, scale = 0.5 }
+    { location = FullBoard, vy = 0.78125, vx = 0.375, scale = 0.5 }
 
 
 halfToTf : Half -> CTransform
@@ -2117,8 +2826,8 @@ randomBoardConfig =
         f : Half -> Half -> Float -> Float -> Float -> BoardConfig
         f xHalf yHalf dVx dVy dScale =
             { location = Quadrant { xHalf = xHalf, yHalf = yHalf }
-            , vx = c.vx + dVx
-            , vy = c.vy + dVy
+            , vy = c.vy + dVx
+            , vx = c.vx + dVy
             , scale = c.scale + dScale
             }
     in
@@ -2184,7 +2893,7 @@ getLocals p =
         { hSlf = hPtt, hOpp = hCpr, tfC = tfPtt, tfA = identity, tfTA = identity }
 
     else
-        { hSlf = hCpr, hOpp = hPtt, tfC = tfCpr, tfA = oppositeAnchor, tfTA = oppositeTextAnchor }
+        { hSlf = hCpr, hOpp = hPtt, tfC = tfCpr, tfA = \{ x, y } -> { x = 1 - x, y = y }, tfTA = oppositeTextAnchor }
 
 
 rotatePoint : Float -> Point -> Point
@@ -2223,9 +2932,45 @@ filterElements show units f =
             L.concatMap f <| L.filter (flip L.member l) units
 
 
-getInstrLengths : Int -> Cmd msg
-getInstrLengths i =
-    getTextLengths << L.map (buildMultilineId (buildMultilineId instrId i)) << L.range 1 << L.length << ST.split "\n" <| getInstrText i
+getTtrlInstrLengths : Int -> Cmd msg
+getTtrlInstrLengths i =
+    getTextLengths << L.map (buildMultilineId ttrlInstrId) << L.range 1 << L.length << ST.split "\n" <| getInstrText i
+
+
+getGameInstrText : Player -> GameStage -> Maybe String
+getGameInstrText p s =
+    case ( p, s ) of
+        ( Ptt, Act ) ->
+            Just "Make a decision"
+
+        ( Cpr, Act ) ->
+            Just "Make a prediction"
+
+        ( _, Memory ) ->
+            Just "Memory check"
+
+        _ ->
+            Nothing
+
+
+getGameInstrLengths : Player -> GameStage -> Cmd msg
+getGameInstrLengths p s =
+    let
+        text =
+            getGameInstrText p s
+    in
+    case text of
+        Nothing ->
+            C.none
+
+        Just t ->
+            getTextLengths
+                << L.map (buildMultilineId gameInstrId)
+                << L.range 1
+                << L.length
+                << ST.split "\n"
+            <|
+                t
 
 
 getBarNumberLengths : Show GameUnit -> Cmd msg
@@ -2253,7 +2998,7 @@ getBarNumberLengths show =
                     getTextLengths [ oppBarNumberId ]
 
                 _ ->
-                    Cmd.none
+                    C.none
 
 
 setTestModelGame : (GameModel -> GameModel) -> TestModel -> TestModel
@@ -2273,7 +3018,7 @@ setTtrlModelGame f m =
 
 dedent : String -> String
 dedent =
-    SE.unindent >> ST.trim
+    SE.unindent >> ST.trim >> ST.replace "'" "’"
 
 
 ttrlGameProps : TtrlModel -> GameProps
@@ -2285,7 +3030,7 @@ ttrlGameProps m =
     { isTtrl = True
     , player = M.withDefault Ptt <| M.map .player step
     , boardConfig = defaultBoardConfig
-    , oppReceiver = Opp
+    , oppReceiver = M.withDefault Opp <| M.map .oppReceiver step
     , show = M.withDefault ShowAll <| M.map .gameShow step
     , memory = False
     }
@@ -2321,6 +3066,20 @@ touched msg model =
             False
 
 
+collected : Msg -> TtrlModel -> Bool
+collected msg model =
+    case msg of
+        Animate t ->
+            let
+                ( newModel, _ ) =
+                    updateAnimate t model.game (ttrlGameProps model)
+            in
+            L.member newModel.stage [ PostCollectPays, PostCollectPredPay ]
+
+        _ ->
+            False
+
+
 getStep : Int -> TtrlStep
 getStep i =
     M.withDefault defaultStep <| A.get (i - 1) ttrlSteps
@@ -2334,6 +3093,11 @@ isShowing u s =
 
         ShowSome l ->
             L.member u l
+
+
+xy : a -> b -> { x : a, y : b }
+xy x y =
+    { x = x, y = y }
 
 
 
@@ -2401,6 +3165,7 @@ encodeTest t =
     E.object
         [ ( "game", encodeGame t.game )
         , ( "round", E.int t.round )
+        , ( "instrLength", encodeMFloat t.instrLength )
         , ( "showTtrl", E.bool t.showTtrl )
         , ( "ttrl", encodeTtrl t.ttrl )
         ]
@@ -2409,15 +3174,17 @@ encodeTest t =
 testDecoder : D.Decoder TestModel
 testDecoder =
     D.succeed
-        (\g r s t ->
+        (\g r i s t ->
             { game = g
             , round = r
+            , instrLength = i
             , showTtrl = s
             , ttrl = t
             }
         )
         |> DP.required "game" gameDecoder
         |> DP.required "round" D.int
+        |> DP.required "instrLength" mFloatDecoder
         |> DP.required "showTtrl" D.bool
         |> DP.required "ttrl" ttrlDecoder
 
@@ -2433,6 +3200,7 @@ encodeGame g =
         , ( "pttTotal", E.float g.pttTotal )
         , ( "mouseStatus", encodeMouseStatus g.mouseStatus )
         , ( "board", encodeBBox g.board )
+        , ( "instrLength", encodeMFloat g.instrLength )
         , ( "textLengths", E.dict identity E.float g.textLengths )
         , ( "animationStartTime", encodeMInt g.animationStartTime )
         , ( "slfAnimationState", encodeAnimationState g.slfAnimationState )
@@ -2444,7 +3212,7 @@ encodeGame g =
 gameDecoder : D.Decoder GameModel
 gameDecoder =
     D.succeed
-        (\s l fl p c pt m b t a sa oa ls ->
+        (\s l fl p c pt m b i t a sa oa ls ->
             { stage = s
             , lambda = l
             , fixedLambda = fl
@@ -2453,6 +3221,7 @@ gameDecoder =
             , pttTotal = pt
             , mouseStatus = m
             , board = b
+            , instrLength = i
             , textLengths = t
             , animationStartTime = a
             , slfAnimationState = sa
@@ -2468,6 +3237,7 @@ gameDecoder =
         |> DP.required "pttTotal" D.float
         |> DP.required "mouseStatus" mouseStatusDecoder
         |> DP.required "board" bBoxDecoder
+        |> DP.required "instrLength" mFloatDecoder
         |> DP.required "textLengths" (D.dict D.float)
         |> DP.required "animationStartTime" mIntDecoder
         |> DP.required "slfAnimationState" animationStateDecoder
@@ -2492,14 +3262,26 @@ encodeStage s =
                 ShowCpr ->
                     "ShowCpr"
 
-                Collect ->
-                    "Collect"
+                CollectPays ->
+                    "CollectPays"
 
-                PostCollect ->
-                    "PostCollect"
+                PostCollectPays ->
+                    "PostCollectPays"
+
+                ShowPredPay ->
+                    "ShowPredPay"
+
+                CollectPredPay ->
+                    "CollectPredPay"
+
+                PostCollectPredPay ->
+                    "PostCollectPredPay"
 
                 Review ->
                     "Review"
+
+                PostReview ->
+                    "PostReview"
 
                 Memory ->
                     "Memory"
@@ -2522,14 +3304,26 @@ stringToStage s =
         "ShowCpr" ->
             D.succeed ShowCpr
 
-        "Collect" ->
-            D.succeed Collect
+        "CollectPays" ->
+            D.succeed CollectPays
 
-        "PostCollect" ->
-            D.succeed PostCollect
+        "PostCollectPays" ->
+            D.succeed PostCollectPays
+
+        "ShowPredPay" ->
+            D.succeed ShowPredPay
+
+        "CollectPredPay" ->
+            D.succeed CollectPredPay
+
+        "PostCollectPredPay" ->
+            D.succeed PostCollectPredPay
 
         "Review" ->
             D.succeed Review
+
+        "PostReview" ->
+            D.succeed PostReview
 
         "Memory" ->
             D.succeed Memory

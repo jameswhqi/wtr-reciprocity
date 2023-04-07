@@ -1,7 +1,6 @@
 module Utils exposing (..)
 
 import Html exposing (a)
-import List as L
 
 
 maybeToList : Maybe a -> List a
@@ -12,8 +11,3 @@ maybeToList m =
 
         Nothing ->
             []
-
-
-maybeListToList : Maybe (List a) -> List a
-maybeListToList =
-    maybeToList >> L.concat

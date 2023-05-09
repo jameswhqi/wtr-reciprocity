@@ -51,6 +51,17 @@ type ExptStage
     | ESTest
 
 
+type TestStage
+    = PrePrtc
+    | TtrlButton
+    | Prtc
+    | DonePrtc
+    | Pairing
+    | Paired
+    | Real
+    | DoneReal
+
+
 type GameStage
     = PreAct
     | Act
@@ -97,9 +108,12 @@ type alias TtrlModel =
 
 
 type alias TestModel =
-    { game : GameModel
+    { stage : TestStage
+    , game : GameModel
     , round : Int
     , instrLength : Maybe Float
+    , readyForNext : Bool
+    , history : List RoundData
     , showTtrl : Bool
     , ttrl : TtrlModel
     }
@@ -120,13 +134,35 @@ type alias GameModel =
     , slfAnimationState : AnimationState
     , oppAnimationState : AnimationState
     , loadingStep : Int
+    , actStartTime : Int
+    , actStopTime : Int
+    , reviewStartTime : Int
+    , reviewStopTime : Int
+    }
+
+
+type alias RoundData =
+    { round : Int
+    , player : Player
+    , boardConfig : BoardConfig
+    , oppReceiver : OppReceiver
+    , pttLambda : Maybe Float
+    , predLambda : Maybe Float
+    , cprLambda : Maybe Float
+    , memory : Maybe Float
+    , actTime : Float
+    , reviewTime : Float
     }
 
 
 type alias GameProps =
     { isTtrl : Bool
+    , isPrtc : Bool
+    , lastRound : Bool
     , player : Player
     , boardConfig : BoardConfig
+    , cprLambda : Float
+    , cprActTime : Maybe Float
     , oppReceiver : OppReceiver
     , show : Show GameUnit
     , memory : Bool
@@ -154,6 +190,9 @@ type Msg
     | PrevStep
     | NextStep Bool
     | TtrlProceed
+    | TestGoTo TestStage
+    | TestProceed
+    | SwitchTtrl
     | MouseEnter
     | MouseLeave
     | MouseDown Point
@@ -162,10 +201,11 @@ type Msg
     | WindowResize
     | GotBoard (Result BD.Error BD.Element)
     | NextRound
-    | GoTo GameStage
+    | GameGoTo GameStage
     | Animate Int
     | LoadingStep
     | CprAct
+    | GotTime GameStage Int
     | NormalGameMsg Msg
     | TestTtrlGameMsg Msg
 
@@ -268,6 +308,19 @@ type ProceedConfig
     | ProceedOnMsg (Msg -> TtrlModel -> Bool)
 
 
+type alias TestStageConfig =
+    { modal : Maybe ModalConfig
+    , gameMsg : Maybe Msg
+    }
+
+
+type alias ModalConfig =
+    { instrText : String
+    , waitTime : Float
+    , nextStage : TestStage
+    }
+
+
 
 -- PORTS --
 
@@ -333,6 +386,10 @@ initGame =
     , slfAnimationState = Nothing
     , oppAnimationState = Nothing
     , loadingStep = 0
+    , actStartTime = 0
+    , actStopTime = 0
+    , reviewStartTime = 0
+    , reviewStopTime = 0
     }
 
 
@@ -357,9 +414,12 @@ initTtrlCmd =
 
 initTest : TestModel
 initTest =
-    { game = { initGame | stage = Act }
+    { stage = PrePrtc
+    , game = initGame
     , round = 1
     , instrLength = Nothing
+    , readyForNext = False
+    , history = []
     , showTtrl = False
     , ttrl = { initTtrl | latestStep = A.length ttrlSteps }
     }
@@ -368,16 +428,17 @@ initTest =
 initTestCmd : Cmd Msg
 initTestCmd =
     C.batch
-        [ P.sleep 2000 |> T.perform (always <| CprAct)
-        , getBoard
-        , getGameInstrLengths (testGameProps initTest |> .player) Act
+        [ getBoard
+        , getTestInstrLengths PrePrtc
+        , P.sleep (prePrtcWaitTime * 1000 / waitSpeedRatio)
+            |> T.perform (always TestProceed)
         ]
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
-update msg m =
+update msg =
     let
-        ( m1, c1 ) =
+        u1 m =
             case msg of
                 StateLoaded (Ok m2) ->
                     ( m2, C.none )
@@ -406,24 +467,24 @@ update msg m =
                 _ ->
                     ( m, C.none )
 
-        ( m3, c3 ) =
-            case m1 of
+        u2 m =
+            case m of
                 Ttrl ttrl ->
-                    Tuple.mapFirst Ttrl <| updateTtrl False msg ttrl
+                    Tuple.mapFirst Ttrl <| updateTtrl identity msg ttrl
 
                 Test test ->
                     Tuple.mapFirst Test <| updateTest msg test
     in
-    ( m3, C.batch [ c1, c3 ] )
+    chainUpdates [ u1, u2 ]
 
 
-updateTtrl : Bool -> Msg -> TtrlModel -> ( TtrlModel, Cmd Msg )
-updateTtrl ignoreGame msg m =
+updateTtrl : (Msg -> Msg) -> Msg -> TtrlModel -> ( TtrlModel, Cmd Msg )
+updateTtrl gameWrapper msg =
     let
-        ( m1, c1 ) =
+        u1 m =
             case msg of
                 GotTextLengths (Ok ls) ->
-                    ( m |> updateInstrLength ttrlInstrId setTtrlInstrLength ls
+                    ( m |> updateInstrLength ttrlTestInstrId setTtrlInstrLength ls
                     , C.none
                     )
 
@@ -446,9 +507,9 @@ updateTtrl ignoreGame msg m =
                             getStep <| m.step + 1
 
                         updateGameWithMsg msg1 =
-                            updateGame identity msg1 (ttrlGameProps m) (ttrlGameProps m) m.game
+                            updateGame identity msg1 (ttrlGameProps m) m.game
 
-                        ( game1, gameCmd1 ) =
+                        ( game, gameCmd ) =
                             nextStep.gameMsg
                                 |> M.map updateGameWithMsg
                                 |> M.withDefault ( m.game, C.none )
@@ -458,7 +519,7 @@ updateTtrl ignoreGame msg m =
                                 ProceedAfterWait t ->
                                     if m.step == m.latestStep && wait then
                                         ( False
-                                        , P.sleep (t * 1000 / ttrlWaitSpeedRatio)
+                                        , P.sleep (t * 1000 / waitSpeedRatio)
                                             |> T.perform (always TtrlProceed)
                                         )
 
@@ -477,14 +538,14 @@ updateTtrl ignoreGame msg m =
                             , latestStep = max m.latestStep (m.step + 1)
                             , readyForNext = readyForNext
                             , instrLength = Nothing
-                            , game = game1
+                            , game = game
                             , gameStates = A.set (m.step - 1) m.game m.gameStates
                           }
                         , C.batch
                             [ proceedCmd
                             , M.withDefault C.none <| nextStep.cmd
                             , getTtrlInstrLengths <| m.step + 1
-                            , gameCmd1
+                            , gameCmd
                             ]
                         )
 
@@ -497,77 +558,232 @@ updateTtrl ignoreGame msg m =
                 _ ->
                     ( m, C.none )
 
-        currentStep =
-            getStep m.step
-
-        m2 =
-            case currentStep.proceed of
+        u2 m =
+            let
+                step =
+                    getStep m.step
+            in
+            ( case step.proceed of
                 ProceedOnMsg f ->
                     if f msg m then
-                        { m1 | readyForNext = True }
+                        { m | readyForNext = True }
 
                     else
-                        m1
+                        m
 
                 _ ->
-                    m1
+                    m
+            , Cmd.none
+            )
 
-        ( game2, gameCmd2 ) =
-            updateGame identity msg (ttrlGameProps m) (ttrlGameProps m2) m2.game
+        u3 m =
+            let
+                ( game, gameCmd ) =
+                    updateGame gameWrapper msg (ttrlGameProps m) m.game
+            in
+            ( { m | game = game }, gameCmd )
     in
-    if ignoreGame then
-        ( m2, c1 )
-
-    else
-        ( { m2 | game = game2 }, C.batch [ c1, gameCmd2 ] )
+    chainUpdates [ u1, u2, u3 ]
 
 
 updateTest : Msg -> TestModel -> ( TestModel, Cmd Msg )
-updateTest msg m =
+updateTest msg =
     let
-        ( m1, c1 ) =
+        u1 m =
             case msg of
+                GotTextLengths (Ok ls) ->
+                    let
+                        m1 =
+                            if m.showTtrl then
+                                m
+
+                            else
+                                m |> updateInstrLength ttrlTestInstrId setTestInstrLength ls
+                    in
+                    ( m1, C.none )
+
                 NormalGameMsg msg1 ->
                     let
-                        ( game1, gameCmd1 ) =
-                            updateGame NormalGameMsg msg1 (testGameProps m) (testGameProps m) m.game
+                        ( game, gameCmd ) =
+                            updateGame NormalGameMsg msg1 (testGameProps m) m.game
                     in
-                    ( { m | game = game1 }, gameCmd1 )
+                    ( { m | game = game }, gameCmd )
 
                 TestTtrlGameMsg msg1 ->
                     let
-                        ( game1, gameCmd1 ) =
-                            updateGame TestTtrlGameMsg msg1 (ttrlGameProps m.ttrl) (ttrlGameProps m.ttrl) m.ttrl.game
+                        ( ttrl, ttrlCmd ) =
+                            updateTtrl TestTtrlGameMsg msg1 m.ttrl
                     in
-                    ( m |> set (setTestModelTttr << setTtrlModelGame) game1, gameCmd1 )
+                    ( { m | ttrl = ttrl }, ttrlCmd )
 
                 NextRound ->
-                    updateTest (NormalGameMsg <| GoTo Act) { m | round = m.round + 1 }
+                    if m.showTtrl then
+                        ( m, C.none )
+
+                    else if prtcStage m.stage then
+                        if m.round == nPrtcRounds then
+                            updateTest (TestGoTo DonePrtc) m
+
+                        else
+                            updateTest (NormalGameMsg <| GameGoTo Act) { m | round = m.round + 1 }
+
+                    else if m.round == nRealRounds then
+                        updateTest (TestGoTo DoneReal) <| addRoundData m
+
+                    else
+                        let
+                            m1 =
+                                addRoundData m
+                        in
+                        updateTest (NormalGameMsg <| GameGoTo Act) { m1 | round = m1.round + 1 }
+
+                TestGoTo stage ->
+                    let
+                        stageConfig =
+                            getTestStageConfig stage
+
+                        getWaitCmd waitTime =
+                            P.sleep (waitTime * 1000 / waitSpeedRatio)
+                                |> T.perform (always TestProceed)
+
+                        waitCmd =
+                            if stage == Pairing then
+                                P.sleep (randomThings.pairingTime * 1000 / waitSpeedRatio)
+                                    |> T.perform (always <| TestGoTo Paired)
+
+                            else
+                                stageConfig.modal
+                                    |> M.map (.waitTime >> getWaitCmd)
+                                    |> M.withDefault C.none
+
+                        round =
+                            if stage == Paired then
+                                1
+
+                            else
+                                m.round
+
+                        m1 =
+                            { m
+                                | stage = stage
+                                , readyForNext = False
+                                , instrLength = Nothing
+                                , round = round
+                            }
+
+                        updateGameWithMsg msg1 =
+                            updateGame NormalGameMsg msg1 (testGameProps m1) m.game
+
+                        ( game, gameCmd ) =
+                            stageConfig.gameMsg
+                                |> M.map updateGameWithMsg
+                                |> M.withDefault ( m.game, C.none )
+                    in
+                    ( { m1 | game = game }
+                    , C.batch
+                        [ waitCmd
+                        , getTestInstrLengths stage
+                        , gameCmd
+                        ]
+                    )
+
+                TestProceed ->
+                    ( { m | readyForNext = True }, C.none )
+
+                SwitchTtrl ->
+                    let
+                        c =
+                            if not m.showTtrl || m.ttrl.step == 1 then
+                                getTtrlInstrLengths 1
+
+                            else
+                                C.none
+                    in
+                    ( { m | showTtrl = not m.showTtrl }, c )
+
+                NextStep _ ->
+                    ( if m.ttrl.step == A.length ttrlSteps then
+                        { m | showTtrl = False }
+
+                      else
+                        m
+                    , C.none
+                    )
 
                 _ ->
                     ( m, C.none )
 
-        ( ttrl, ttrlCmd ) =
-            updateTtrl True msg m1.ttrl
+        addRoundData : TestModel -> TestModel
+        addRoundData m =
+            let
+                gp =
+                    testGameProps m
 
-        ( ( game2, gameCmd2 ), gameSetter ) =
-            if m1.showTtrl then
-                ( updateGame TestTtrlGameMsg msg (ttrlGameProps m.ttrl) (ttrlGameProps m1.ttrl) m1.ttrl.game
-                , set (setTestModelTttr << setTtrlModelGame)
-                )
+                ( pttLambda, predLambda, cprLambda ) =
+                    if gp.player == Ptt then
+                        ( m.game.fixedLambda, Nothing, Nothing )
+
+                    else
+                        ( Nothing, m.game.prediction, m.game.fixedLambda )
+
+                memory =
+                    if gp.memory then
+                        m.game.lambda
+
+                    else
+                        Nothing
+
+                roundData =
+                    { round = m.round
+                    , player = gp.player
+                    , boardConfig = gp.boardConfig
+                    , oppReceiver = gp.oppReceiver
+                    , pttLambda = pttLambda
+                    , predLambda = predLambda
+                    , cprLambda = cprLambda
+                    , memory = memory
+                    , actTime = toFloat (m.game.actStopTime - m.game.actStartTime) / 1000
+                    , reviewTime = toFloat (m.game.reviewStopTime - m.game.reviewStartTime) / 1000
+                    }
+            in
+            { m | history = roundData :: m.history }
+
+        u2 m =
+            if m.showTtrl then
+                let
+                    ( ttrl, ttrlCmd ) =
+                        updateTtrl TestTtrlGameMsg msg m.ttrl
+                in
+                ( { m | ttrl = ttrl }, ttrlCmd )
 
             else
-                ( updateGame NormalGameMsg msg (testGameProps m) (testGameProps m1) m1.game
-                , set setTestModelGame
-                )
+                let
+                    ( game, gameCmd ) =
+                        updateGame NormalGameMsg msg (testGameProps m) m.game
+                in
+                ( { m | game = game }, gameCmd )
+
+        u3 m =
+            case msg of
+                GotTime PostReview _ ->
+                    if testGameProps m |> .memory then
+                        let
+                            ( game, gameCmd ) =
+                                updateGame NormalGameMsg (GameGoTo Memory) (testGameProps m) m.game
+                        in
+                        ( { m | game = game }, gameCmd )
+
+                    else
+                        updateTest NextRound m
+
+                _ ->
+                    ( m, C.none )
     in
-    ( { m1 | ttrl = ttrl } |> gameSetter game2
-    , C.batch [ c1, ttrlCmd, gameCmd2 ]
-    )
+    chainUpdates [ u1, u2, u3 ]
 
 
-updateGame : (Msg -> Msg) -> Msg -> GameProps -> GameProps -> GameModel -> ( GameModel, Cmd Msg )
-updateGame wrapper msg op p m =
+updateGame : (Msg -> Msg) -> Msg -> GameProps -> GameModel -> ( GameModel, Cmd Msg )
+updateGame wrapper msg p model =
     let
         localX =
             if p.player == Ptt then
@@ -577,22 +793,25 @@ updateGame wrapper msg op p m =
                 localXCpr
 
         getLambda x =
-            Just << xToLambda p.boardConfig <| localX x m.board
+            Just << xToLambda p.boardConfig <| localX x model.board
 
-        ( m1, c1, wrap ) =
+        wrap =
+            C.map wrapper
+
+        u1 m =
             case msg of
                 GotTextLengths (Ok ls) ->
                     let
-                        m2 =
+                        m1 =
                             m |> updateInstrLength gameInstrId setGameInstrLength ls
 
                         pred k _ =
-                            L.all (\i -> not <| ST.startsWith i k) [ ttrlInstrId, gameInstrId ]
+                            L.all (\i -> not <| ST.startsWith i k) [ ttrlTestInstrId, gameInstrId ]
 
                         newLengths =
                             DI.union (DI.filter pred ls) m.textLengths
                     in
-                    { m2 | textLengths = newLengths } |> noCmdOrWrap
+                    ( { m1 | textLengths = newLengths }, C.none )
 
                 MouseEnter ->
                     let
@@ -603,7 +822,7 @@ updateGame wrapper msg op p m =
                             else
                                 m.mouseStatus
                     in
-                    { m | mouseStatus = mouseStatus } |> noCmdOrWrap
+                    ( { m | mouseStatus = mouseStatus }, C.none )
 
                 MouseLeave ->
                     let
@@ -614,11 +833,11 @@ updateGame wrapper msg op p m =
                             else
                                 m.mouseStatus
                     in
-                    { m | mouseStatus = mouseStatus } |> noCmdOrWrap
+                    ( { m | mouseStatus = mouseStatus }, C.none )
 
                 MouseDown { x, y } ->
                     let
-                        ( lambda, c2 ) =
+                        ( lambda, c ) =
                             if isActiveStage m.stage then
                                 ( getLambda x, getBarNumberLengths p.show )
 
@@ -626,10 +845,10 @@ updateGame wrapper msg op p m =
                                 ( m.lambda, C.none )
                     in
                     if inBBox x y m.board then
-                        ( { m | mouseStatus = DownIn, lambda = lambda }, c2, False )
+                        ( { m | mouseStatus = DownIn, lambda = lambda }, c )
 
                     else
-                        { m | mouseStatus = DownOut } |> noCmdOrWrap
+                        ( { m | mouseStatus = DownOut }, C.none )
 
                 MouseUp { x, y } ->
                     let
@@ -641,59 +860,81 @@ updateGame wrapper msg op p m =
                                 UpOut
 
                         lambda =
-                            if m.fixedLambda == Nothing then
+                            if m.fixedLambda == Nothing || m.stage == Memory then
                                 m.lambda
 
                             else
                                 m.fixedLambda
                     in
-                    { m | mouseStatus = mouseStatus, lambda = lambda } |> noCmdOrWrap
+                    ( { m | mouseStatus = mouseStatus, lambda = lambda }, C.none )
 
                 MouseMove { x } ->
                     ( { m | lambda = getLambda x }
                     , getBarNumberLengths p.show
-                    , False
                     )
 
                 WindowResize ->
-                    ( m, getBoard, False )
+                    ( m, getBoard )
 
                 GotBoard (Ok { element }) ->
-                    { m | board = element } |> noCmdOrWrap
+                    ( { m | board = element }, C.none )
 
-                GoTo PreAct ->
-                    { m
+                GameGoTo PreAct ->
+                    let
+                        ( pttTotal, c ) =
+                            if p.isTtrl || p.isPrtc then
+                                ( m.pttTotal, C.none )
+
+                            else
+                                ( 0
+                                , P.sleep ((A.get 0 randomThings.cprActTimes |> M.withDefault 0) * 1000 / waitSpeedRatio)
+                                    |> T.perform (\_ -> CprAct)
+                                    |> wrap
+                                )
+                    in
+                    ( { m
                         | stage = PreAct
                         , lambda = Nothing
                         , fixedLambda = Nothing
                         , cprActed = False
                         , prediction = Nothing
-                    }
-                        |> noCmdOrWrap
+                        , pttTotal = pttTotal
+                      }
+                    , c
+                    )
 
-                GoTo Act ->
+                GameGoTo Act ->
                     let
-                        c2 =
-                            if p.isTtrl then
+                        cprActed =
+                            if p.isTtrl || p.isPrtc then
+                                False
+
+                            else
+                                m.cprActed
+
+                        c1 =
+                            if p.isTtrl || not p.isPrtc then
                                 C.none
 
                             else
-                                P.sleep 2000 |> T.perform (\_ -> CprAct)
+                                P.sleep 200 |> T.perform (\_ -> CprAct) |> wrap
+
+                        c2 =
+                            getTime p Act
                     in
                     ( { m
                         | stage = Act
                         , lambda = Nothing
                         , fixedLambda = Nothing
-                        , cprActed = False
+                        , cprActed = cprActed
                         , prediction = Nothing
                       }
-                    , c2
-                    , True
+                    , C.batch [ c1, c2 ]
                     )
 
-                GoTo PostAct ->
+                GameGoTo PostAct ->
                     let
-                        m2 =
+                        m1 =
                             case p.player of
                                 Ptt ->
                                     { m | stage = PostAct, lambda = newLambda, fixedLambda = newLambda }
@@ -704,9 +945,9 @@ updateGame wrapper msg op p m =
                         newLambda =
                             Just << M.withDefault 0.5 <| m.lambda
 
-                        c2 =
+                        c1 =
                             if m.cprActed && not p.isTtrl then
-                                P.sleep 1000 |> T.perform (always <| GoTo newStage)
+                                P.sleep 1000 |> T.perform (always <| GameGoTo newStage) |> wrap
 
                             else
                                 C.none
@@ -717,26 +958,46 @@ updateGame wrapper msg op p m =
 
                             else
                                 ShowCpr
+
+                        c2 =
+                            getTime p PostAct
                     in
-                    ( m2, c2, True )
+                    ( m1, C.batch [ c1, c2 ] )
 
-                GoTo Memory ->
-                    { m | stage = Memory, lambda = Nothing, fixedLambda = Nothing, prediction = Nothing } |> noCmdOrWrap
+                GameGoTo PostReview ->
+                    ( { m | stage = PostReview }, getTime p PostReview )
 
-                GoTo ShowCpr ->
-                    ( { m | stage = ShowCpr, lambda = Just 1, fixedLambda = Just 1 }
-                    , P.sleep 1000 |> T.perform (\_ -> GoTo CollectPays)
-                    , True
+                GameGoTo Memory ->
+                    ( { m | stage = Memory, lambda = Nothing }, C.none )
+
+                GameGoTo ShowCpr ->
+                    ( { m | stage = ShowCpr, lambda = Just p.cprLambda, fixedLambda = Just p.cprLambda }
+                    , P.sleep 1000 |> T.perform (\_ -> GameGoTo CollectPays) |> wrap
                     )
 
-                GoTo CollectPays ->
-                    ( { m | stage = CollectPays }, getBarNumberLengths p.show, False )
+                GameGoTo CollectPays ->
+                    let
+                        getC cprActTime =
+                            P.sleep (cprActTime * 1000 / waitSpeedRatio)
+                                |> T.perform (\_ -> CprAct)
+                                |> wrap
+                    in
+                    ( { m | stage = CollectPays, cprActed = False }
+                    , C.batch
+                        [ getBarNumberLengths p.show
+                        , p.cprActTime |> M.map getC |> M.withDefault C.none
+                        ]
+                    )
 
-                GoTo ShowPredPay ->
+                GameGoTo ShowPredPay ->
                     let
                         getStage pay =
                             if roundPayoff (pay * payoffScale) == 0 then
-                                Review
+                                if p.isTtrl then
+                                    PostCollectPredPay
+
+                                else
+                                    Review
 
                             else
                                 CollectPredPay
@@ -745,33 +1006,39 @@ updateGame wrapper msg op p m =
                             M.map2 calcPredPayoff m.prediction m.fixedLambda
                                 |> M.map getStage
                                 |> M.withDefault Review
+
+                        c =
+                            if stage == Review then
+                                getTime p Review
+
+                            else
+                                C.none
                     in
                     ( { m | stage = ShowPredPay }
-                    , P.sleep 1000 |> T.perform (\_ -> GoTo stage)
-                    , True
+                    , C.batch
+                        [ getTextLengths [ predPayId ]
+                        , P.sleep 1000 |> T.perform (\_ -> GameGoTo stage) |> wrap
+                        , c
+                        ]
                     )
 
-                GoTo CollectPredPay ->
-                    ( { m | stage = CollectPredPay }, getTextLengths [ predPayId ], False )
+                GameGoTo CollectPredPay ->
+                    ( { m | stage = CollectPredPay }, C.none )
 
-                GoTo stage ->
-                    { m | stage = stage } |> noCmdOrWrap
+                GameGoTo stage ->
+                    ( { m | stage = stage }, C.none )
 
                 Animate t ->
-                    let
-                        ( m2, c2 ) =
-                            updateAnimate t m p
-                    in
-                    ( m2, c2, False )
+                    updateAnimate t m p
 
                 LoadingStep ->
-                    { m | loadingStep = m.loadingStep + 1 } |> noCmdOrWrap
+                    ( { m | loadingStep = m.loadingStep + 1 }, C.none )
 
                 CprAct ->
                     let
-                        c2 =
+                        c =
                             if m.stage == PostAct && not p.isTtrl then
-                                P.sleep 1000 |> T.perform (always <| GoTo stage)
+                                P.sleep 1000 |> T.perform (always <| GameGoTo stage) |> wrap
 
                             else
                                 C.none
@@ -783,26 +1050,40 @@ updateGame wrapper msg op p m =
                             else
                                 ShowCpr
                     in
-                    ( { m | cprActed = True }, c2, True )
+                    ( { m | cprActed = True }, c )
+
+                GotTime Act t ->
+                    ( { m | actStartTime = t }, C.none )
+
+                GotTime PostAct t ->
+                    ( { m | actStopTime = t }, C.none )
+
+                GotTime Review t ->
+                    ( { m | reviewStartTime = t }, C.none )
+
+                GotTime PostReview t ->
+                    ( { m | reviewStopTime = t }, C.none )
 
                 _ ->
-                    m |> noCmdOrWrap
+                    ( m, C.none )
 
-        ( m3, c3 ) =
-            if op.player /= p.player || m.stage /= m1.stage then
-                ( { m1 | instrLength = Nothing }, getGameInstrLengths p.player m1.stage )
-
-            else
-                ( m1, C.none )
-
-        wrapper2 =
-            if wrap then
-                wrapper
+        u2 m =
+            if model.stage /= m.stage then
+                ( { m | instrLength = Nothing }, getGameInstrLengths p.player m.stage )
 
             else
-                identity
+                ( m, C.none )
     in
-    ( m3, C.map wrapper2 <| C.batch [ c1, c3 ] )
+    chainUpdates [ u1, u2 ] model
+
+
+getTime : GameProps -> GameStage -> Cmd Msg
+getTime p stage =
+    if p.isTtrl || p.isPrtc then
+        C.none
+
+    else
+        Time.now |> T.perform (Time.posixToMillis >> GotTime stage)
 
 
 updateAnimate : Int -> GameModel -> GameProps -> ( GameModel, Cmd Msg )
@@ -839,7 +1120,7 @@ updateAnimate t m p =
                     else
                         m.pttTotal
 
-                ( stage, animationStartTime, cmd ) =
+                ( stage, animationStartTime, c1 ) =
                     if slfAnimationState == Nothing && oppAnimationState == Nothing then
                         ( if m.stage == CollectPays && (p.isTtrl || p.player == Cpr) then
                             PostCollectPays
@@ -851,7 +1132,7 @@ updateAnimate t m p =
                             Review
                         , Nothing
                         , if m.stage == CollectPays && not p.isTtrl && p.player == Cpr then
-                            P.sleep 1000 |> T.perform (always <| GoTo ShowPredPay)
+                            P.sleep 1000 |> T.perform (always <| GameGoTo ShowPredPay)
 
                           else
                             C.none
@@ -859,6 +1140,13 @@ updateAnimate t m p =
 
                     else
                         ( m.stage, m.animationStartTime, C.none )
+
+                c2 =
+                    if stage == Review then
+                        getTime p Review
+
+                    else
+                        C.none
             in
             ( { m
                 | slfAnimationState = slfAnimationState
@@ -867,7 +1155,7 @@ updateAnimate t m p =
                 , stage = stage
                 , animationStartTime = animationStartTime
               }
-            , cmd
+            , C.batch [ c1, c2 ]
             )
 
         getSlfAnimationState t0 payoffs =
@@ -950,11 +1238,6 @@ updateAnimate t m p =
                     update1 t0 lambda
 
 
-noCmdOrWrap : a -> ( a, Cmd msg, Bool )
-noCmdOrWrap a =
-    ( a, C.none, False )
-
-
 
 -- VIEW --
 
@@ -988,6 +1271,7 @@ view m =
                       -- Css.fontVariantNumeric Css.tabularNums
                       Css.property "user-select" "none"
                     , Css.property "-webkit-user-select" "none"
+                    , Css.display Css.block
                     ]
                 ]
             << L.concatMap (draw colorsDict)
@@ -1019,6 +1303,7 @@ viewTtrl m =
                     , w = 120
                     , h = 50
                     , text = "Previous"
+                    , fontSize = 24
                     , clickMsg = PrevStep
                     , id = Just prevButtonId
                     }
@@ -1028,6 +1313,7 @@ viewTtrl m =
                     , w = 120
                     , h = 50
                     , text = text
+                    , fontSize = 24
                     , clickMsg = NextStep True
                     , id = Just nextButtonId
                     }
@@ -1053,19 +1339,92 @@ viewTtrl m =
 
 viewTest : TestModel -> List (Element Msg)
 viewTest m =
-    if m.showTtrl then
-        viewTtrl m.ttrl
+    let
+        ttrlTest =
+            if m.showTtrl then
+                viewTtrl m.ttrl
 
-    else
-        let
-            roundCounter =
-                viewRoundCounter
-                    { round = m.round
-                    , totalRounds = nTestRounds
-                    , player = roundToPlayer m.round
+            else
+                let
+                    roundCounter =
+                        viewRoundCounter
+                            { round = m.round
+                            , totalRounds = totalRounds
+                            , player = roundToPlayer m.round
+                            }
+
+                    totalRounds =
+                        if prtcStage m.stage then
+                            nPrtcRounds
+
+                        else
+                            nRealRounds
+
+                    nextStage =
+                        getTestStageConfig m.stage
+                            |> .modal
+                            |> M.map .nextStage
+                            |> M.withDefault PrePrtc
+
+                    okButton =
+                        if m.readyForNext then
+                            viewButton
+                                { x = cCenterX
+                                , y = cCenterY + 100
+                                , w = 80
+                                , h = 50
+                                , text = "OK"
+                                , fontSize = 24
+                                , clickMsg = TestGoTo nextStage
+                                , id = Nothing
+                                }
+
+                        else
+                            []
+                in
+                L.concat [ viewGame (testGameProps m) m.game, roundCounter, okButton ]
+                    |> M.withDefault identity
+                        (M.map
+                            (\{ instrText } ->
+                                addStaticInstr
+                                    { x = cCenterX
+                                    , y = cCenterY - 30
+                                    , text = instrText
+                                    , anchor = xy 0.5 0.5
+                                    , dim = True
+                                    }
+                                    m.instrLength
+                            )
+                            << .modal
+                         <|
+                            getTestStageConfig m.stage
+                        )
+
+        ttrlButton =
+            if m.stage == PrePrtc then
+                []
+
+            else
+                let
+                    bText =
+                        if m.showTtrl then
+                            "Back to game"
+
+                        else
+                            "Tutorial"
+                in
+                viewButton
+                    { x = tfCpr.x clIconX
+                    , y = cCenterY + 270
+                    , w = 100
+                    , h = 30
+                    , text = bText
+                    , fontSize = 14
+                    , clickMsg = SwitchTtrl
+                    , id = Just ttrlButtonId
                     }
-        in
-        L.concat [ viewGame (testGameProps m) m.game, roundCounter ]
+    in
+    L.concat [ ttrlTest, ttrlButton ]
 
 
 addInstr : Instr -> Maybe Float -> TextLengths -> List (Element msg) -> List (Element msg)
@@ -1095,8 +1454,9 @@ addStaticInstr c instrLength l =
             , y = c.y
             , anchor = c.anchor
             , text = c.text
-            , prefix = ttrlInstrId
+            , prefix = ttrlTestInstrId
             , instrLength = instrLength
+            , hide = False
             }
         ]
 
@@ -1107,16 +1467,16 @@ addCallout c instrLength textLengths (Element shape _) =
         arrowLength =
             50
 
-        target =
+        mTarget =
             case shape of
                 Text t ->
-                    getTextAnchorPos t targetTextLength c.targetAnchor
+                    M.map (\l -> getTextAnchorPos t l c.targetAnchor) targetTextLength
 
                 s ->
-                    getAnchorPos s c.targetAnchor
+                    Just <| getAnchorPos s c.targetAnchor
 
         targetTextLength =
-            M.withDefault 0 <| DI.get c.target textLengths
+            DI.get c.target textLengths
 
         arrowDir =
             { x = arrowDirX / arrowDirR, y = arrowDirY / arrowDirR }
@@ -1130,11 +1490,13 @@ addCallout c instrLength textLengths (Element shape _) =
         arrowDirR =
             vectorLength arrowDirX arrowDirY
 
-        arrowEndX =
-            target.x - c.sep * arrowDir.x
+        ( arrowEndX, arrowEndY ) =
+            case mTarget of
+                Just { x, y } ->
+                    ( x - c.sep * arrowDir.x, y - c.sep * arrowDir.y )
 
-        arrowEndY =
-            target.y - c.sep * arrowDir.y
+                Nothing ->
+                    ( 0, 0 )
 
         arrowStartX =
             arrowEndX - arrowLength * arrowDir.x
@@ -1151,12 +1513,13 @@ addCallout c instrLength textLengths (Element shape _) =
             , y = arrowStartY
             , anchor = c.instrAnchor
             , text = c.text
-            , prefix = ttrlInstrId
+            , prefix = ttrlTestInstrId
             , instrLength = instrLength
+            , hide = mTarget == Nothing
             }
 
 
-buildMessage : { x : Float, y : Float, anchor : Anchor, text : String, prefix : String, instrLength : Maybe Float } -> List (Element msg)
+buildMessage : { x : Float, y : Float, anchor : Anchor, text : String, prefix : String, instrLength : Maybe Float, hide : Bool } -> List (Element msg)
 buildMessage c =
     let
         lines =
@@ -1199,9 +1562,11 @@ buildMessage c =
                 |> showOrHide
 
         showOrHide =
-            c.instrLength
-                |> M.map (always identity)
-                |> M.withDefault hide
+            if c.hide || c.instrLength == Nothing then
+                hide
+
+            else
+                identity
 
         bg =
             M.map getBg fullW
@@ -1211,6 +1576,7 @@ buildMessage c =
                 |> stroke CO.black 3
                 |> fill CO.white
                 |> onLayer 3
+                |> showOrHide
     in
     L.append (maybeToList bg) <| L.indexedMap drawLine lines
 
@@ -1309,7 +1675,11 @@ viewGame p m =
                 getMovingNumber pay nl { x, y, v } =
                     viewMovingNumber { x = x, y = y, v = v, w = nl, payoff = pay, hue = hPtt }
             in
-            L.concat [ [ predThumb ], maybeToList predPayText, M.withDefault [] movingNumber ]
+            if m.stage == Memory then
+                []
+
+            else
+                L.concat [ [ predThumb ], maybeToList predPayText, M.withDefault [] movingNumber ]
 
         { slfPay, oppPay, confirmButton, othersLambda } =
             m.lambda
@@ -1343,6 +1713,7 @@ viewGame p m =
                         , w = w
                         , h = 50
                         , text = text
+                        , fontSize = 24
                         , clickMsg = clickMsg
                         , id = Just confirmButtonId
                         }
@@ -1353,25 +1724,39 @@ viewGame p m =
                             Just
                                 { w = 120
                                 , text = "Confirm"
-                                , clickMsg = GoTo PostAct
+                                , clickMsg = GameGoTo PostAct
                                 }
 
                         Review ->
                             Just
                                 { w = 140
-                                , text = "Next round"
-                                , clickMsg =
-                                    if p.memory then
-                                        GoTo Memory
+                                , text =
+                                    if p.lastRound then
+                                        "Finish"
 
                                     else
-                                        NextRound
+                                        "Next round"
+                                , clickMsg =
+                                    if p.isTtrl || p.isPrtc then
+                                        if p.memory then
+                                            GameGoTo Memory
+
+                                        else
+                                            NextRound
+
+                                    else
+                                        GameGoTo PostReview
                                 }
 
                         Memory ->
                             Just
                                 { w = 140
-                                , text = "Next round"
+                                , text =
+                                    if p.lastRound then
+                                        "Finish"
+
+                                    else
+                                        "Next round"
                                 , clickMsg = NextRound
                                 }
 
@@ -1459,7 +1844,7 @@ viewGame p m =
                         |> fill (hCpr <| 18 - i)
 
                 fg =
-                    if m.cprActed then
+                    if m.cprActed || not (L.member m.stage [ PreAct, Act, PostAct ]) then
                         [ complexCW check { x = x, y = y, w = 40 }
                             |> fill (hCpr 10)
                         ]
@@ -1540,6 +1925,7 @@ viewGame p m =
                 , text = text
                 , prefix = gameInstrId
                 , instrLength = m.instrLength
+                , hide = False
                 }
     in
     filterElements p.show
@@ -1574,7 +1960,7 @@ viewTotal c =
     ]
 
 
-viewButton : { x : Float, y : Float, w : Float, h : Float, text : String, clickMsg : msg, id : Maybe String } -> List (Element msg)
+viewButton : { x : Float, y : Float, w : Float, h : Float, text : String, fontSize : Float, clickMsg : msg, id : Maybe String } -> List (Element msg)
 viewButton c =
     [ rectC { x = c.x, y = c.y, w = c.w, h = c.h }
         |> fill CO.white
@@ -1585,7 +1971,7 @@ viewButton c =
         |> onClick c.clickMsg
         |> M.withDefault identity (M.map id c.id)
         |> onLayer 4
-    , textC c.text { x = c.x, y = c.y, size = 24 }
+    , textC c.text { x = c.x, y = c.y, size = c.fontSize }
         |> onLayer 4
     ]
 
@@ -1601,11 +1987,11 @@ viewMovingNumber c =
     in
     [ rRectC { x = c.x, y = c.y, w = (c.w + r * 2) * scale, h = (fBarNumber + r * 2) * scale, r = r * scale }
         |> fill CO.white
-        |> onLayer 1
+        |> onLayer 4
     , textC (formatPayoff <| c.payoff * payoffScale) { x = c.x, y = c.y, size = fBarNumber * scale }
         |> fill (c.hue lBarNumber)
         |> tabularNums
-        |> onLayer 1
+        |> onLayer 4
     ]
 
 
@@ -1674,13 +2060,11 @@ subscriptions m =
                     ( t.game, ttrlGameProps t )
 
                 Test t ->
-                    ( if t.showTtrl then
-                        t.ttrl.game
+                    if t.showTtrl then
+                        ( t.ttrl.game, ttrlGameProps t.ttrl )
 
-                      else
-                        t.game
-                    , testGameProps t
-                    )
+                    else
+                        ( t.game, testGameProps t )
 
         mouseDownUp =
             if isActiveStage activeGame.stage then
@@ -1703,7 +2087,7 @@ subscriptions m =
             BE.onResize (\_ _ -> WindowResize)
 
         loadingStep =
-            if activeGame.cprActed || not (isShowing GUCprStatus gameProps.show) then
+            if activeGame.cprActed || not (isShowing GUCprStatus gameProps.show) || not (L.member activeGame.stage [ PreAct, Act, PostAct ]) then
                 Sub.none
 
             else
@@ -1767,12 +2151,62 @@ subsToWrap game =
 
 initStage : ExptStage
 initStage =
-    ESTest
+    ESTtrl
 
 
-ttrlWaitSpeedRatio : Float
-ttrlWaitSpeedRatio =
+waitSpeedRatio : Float
+waitSpeedRatio =
     1
+
+
+nPrtcRounds : Int
+nPrtcRounds =
+    6
+
+
+nRealRounds : Int
+nRealRounds =
+    20
+
+
+minPairingTime : Float
+minPairingTime =
+    5
+
+
+maxPairingTime : Float
+maxPairingTime =
+    30
+
+
+randomThings :
+    { prtcBoardConfigs : A.Array BoardConfig
+    , realBoardConfigs : A.Array BoardConfig
+    , realCprLambdaDeviates : A.Array Float
+    , pairingTime : Float
+    , cprActTimes : A.Array Float
+    }
+randomThings =
+    let
+        s0 =
+            RA.initialSeed 3509
+
+        ( pb, s1 ) =
+            generateBoardConfigs nPrtcRounds s0
+
+        ( rb, s2 ) =
+            generateBoardConfigs nRealRounds s1
+
+        ( rc, s3 ) =
+            generateCprLambdaDeviates (nRealRounds // 2) s2
+
+        ( pt, s4 ) =
+            generatePairingTime s3
+
+        ( ca, _ ) =
+            generateCprActTimes nRealRounds s4
+    in
+    { prtcBoardConfigs = pb, realBoardConfigs = rb, realCprLambdaDeviates = rc, pairingTime = pt, cprActTimes = ca }
 
 
 dFullWidth : Float
@@ -1979,9 +2413,9 @@ pttTotalId =
     "pttTotal"
 
 
-ttrlInstrId : String
-ttrlInstrId =
-    "ttrlInstr"
+ttrlTestInstrId : String
+ttrlTestInstrId =
+    "ttrlTestInstr"
 
 
 gameInstrId : String
@@ -1994,19 +2428,14 @@ confirmButtonId =
     "confirmButton"
 
 
+ttrlButtonId : String
+ttrlButtonId =
+    "ttrlButton"
+
+
 payoffScale : Float
 payoffScale =
     100
-
-
-nTestRounds : Int
-nTestRounds =
-    20
-
-
-testBoardConfigs : A.Array BoardConfig
-testBoardConfigs =
-    generateBoardConfigs 3509 nTestRounds
 
 
 defaultStep : TtrlStep
@@ -2126,7 +2555,7 @@ ttrlSteps =
                     , instrAnchor = xy 0.2 1
                     }
             , proceed = ProceedOnMsg touched
-            , gameMsg = Just <| GoTo Act
+            , gameMsg = Just <| GameGoTo Act
             , cmd = Just getBoard
           }
         , { defaultStep
@@ -2214,7 +2643,7 @@ ttrlSteps =
                     , targetAnchor = xy 1 0.9
                     , instrAnchor = xy 0 0.1
                     }
-            , proceed = ProceedOnMsg (\m _ -> m == GoTo PostAct)
+            , proceed = ProceedOnMsg (\m _ -> m == GameGoTo PostAct)
           }
         , { defaultStep
             | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay ]
@@ -2230,7 +2659,7 @@ ttrlSteps =
                     , dim = False
                     }
             , proceed = ProceedOnMsg collected
-            , cmd = P.sleep 1000 |> T.perform (always <| GoTo CollectPays) |> Just
+            , cmd = P.sleep 1000 |> T.perform (always <| GameGoTo CollectPays) |> Just
           }
         , { defaultStep
             | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay ]
@@ -2266,7 +2695,7 @@ ttrlSteps =
                     , instrAnchor = xy 0.5 1
                     }
             , proceed = ProceedOnMsg touched
-            , gameMsg = Just <| GoTo Review
+            , gameMsg = Just <| GameGoTo Review
           }
         , { defaultStep
             | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay, GUConfirmButton ]
@@ -2300,7 +2729,7 @@ ttrlSteps =
                     }
             , player = Cpr
             , proceed = ProceedAfterWait 2
-            , gameMsg = Just <| GoTo PreAct
+            , gameMsg = Just <| GameGoTo PreAct
           }
         , { defaultStep
             | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay, GUCprStatus ]
@@ -2353,7 +2782,7 @@ ttrlSteps =
                     }
             , player = Cpr
             , proceed = ProceedOnMsg touched
-            , gameMsg = Just <| GoTo Act
+            , gameMsg = Just <| GameGoTo Act
           }
         , { defaultStep
             | gameShow = ShowAll
@@ -2371,7 +2800,7 @@ ttrlSteps =
                     , instrAnchor = xy 0.5 1
                     }
             , player = Cpr
-            , proceed = ProceedOnMsg (\m _ -> m == GoTo PostAct)
+            , proceed = ProceedOnMsg (\m _ -> m == GameGoTo PostAct)
           }
         , { defaultStep
             | gameShow = ShowAll
@@ -2391,7 +2820,26 @@ ttrlSteps =
             , player = Cpr
             , proceed = ProceedOnMsg collected
             , gameMsg = Just CprAct
-            , cmd = P.sleep 1000 |> T.perform (always <| GoTo ShowCpr) |> Just
+            , cmd = P.sleep 1000 |> T.perform (always <| GameGoTo ShowCpr) |> Just
+          }
+        , { defaultStep
+            | gameShow = ShowAll
+            , instr =
+                Callout
+                    { target = predPayId
+                    , sep = 5
+                    , text = dedent """
+                        You will be given a small bonus based on
+                        how close your prediction is to [cpr|Blue's] actual decision.
+                        The closer they are, the higher your bonus will be.
+                        If your prediction is very far off, you won't receive any bonus.
+                        """
+                    , targetAnchor = xy 0.5 0
+                    , instrAnchor = xy 0.5 1
+                    }
+            , player = Cpr
+            , proceed = ProceedOnMsg (\msg m -> collected msg m || msg == GameGoTo PostCollectPredPay)
+            , gameMsg = Just <| GameGoTo ShowPredPay
           }
         , { defaultStep
             | gameShow = ShowSome [ GUOthers, GUPttIcon, GUPttTotal, GUCprIcon, GUCprTotal, GUBoard, GUSlider, GUSlfPay, GUOppPay, GUCprStatus ]
@@ -2409,7 +2857,7 @@ ttrlSteps =
                     }
             , player = Cpr
             , proceed = ProceedOnMsg touched
-            , gameMsg = Just <| GoTo Review
+            , gameMsg = Just <| GameGoTo Review
           }
         , { defaultStep
             | gameShow = ShowAll
@@ -2425,7 +2873,7 @@ ttrlSteps =
                     , instrAnchor = xy 0.8 1
                     }
             , proceed = ProceedAfterWait 2
-            , gameMsg = Just <| GoTo PreAct
+            , gameMsg = Just <| GameGoTo PreAct
           }
         , { defaultStep
             | gameShow = ShowAll
@@ -2476,8 +2924,10 @@ ttrlSteps =
                         (2) You click “Confirm” to confirm your prediction;
                         (3) Your prediction changes to a [ptt|red circle];
                         (4) [cpr|Blue's decision] is revealed;
-                        (5) The rewards are collected; and
-                        (6) You review the available options for [cpr|Blue].
+                        (5) The actual rewards are collected;
+                        (6) You receive a [ptt|bonus] based on
+                        how good your prediction was; and
+                        (7) You review the available options for [cpr|Blue].
                         """
                     , anchor = xy 0.5 0.5
                     , dim = True
@@ -2537,7 +2987,7 @@ ttrlSteps =
                     }
             , oppReceiver = Discard
             , proceed = ProceedAfterWait 4
-            , gameMsg = Just <| GoTo PostAct
+            , gameMsg = Just <| GameGoTo PostAct
             , cmd = Just <| getBarNumberLengths ShowAll
           }
         , { defaultStep
@@ -2596,13 +3046,34 @@ ttrlSteps =
                     , dim = False
                     }
             , proceed = ProceedOnMsg touched
-            , gameMsg = Just <| GoTo Memory
+            , gameMsg = Just <| GameGoTo Memory
           }
         ]
 
 
+prePrtcWaitTime : Float
+prePrtcWaitTime =
+    4
+
+
 
 -- HELPER FUNCTIONS --
+
+
+chainUpdates : List (a -> ( a, Cmd msg )) -> a -> ( a, Cmd msg )
+chainUpdates l m0 =
+    let
+        ( mFinal, lcFinal ) =
+            L.foldl folder ( m0, [] ) l
+
+        folder u ( m1, lc ) =
+            let
+                ( m2, c ) =
+                    u m1
+            in
+            ( m2, c :: lc )
+    in
+    ( mFinal, C.batch lcFinal )
 
 
 set : ((a -> a) -> b -> b) -> a -> b -> b
@@ -2691,14 +3162,14 @@ addElements id f l =
             l ++ f e
 
 
-getInstrText : Int -> String
-getInstrText i =
-    M.withDefault "" << M.map stepToText <| A.get (i - 1) ttrlSteps
+getTtrlInstrText : Int -> String
+getTtrlInstrText i =
+    M.withDefault "" << M.map (.instr >> instrToText) <| A.get (i - 1) ttrlSteps
 
 
-stepToText : TtrlStep -> String
-stepToText step =
-    case step.instr of
+instrToText : Instr -> String
+instrToText i =
+    case i of
         StaticInstr { text } ->
             text
 
@@ -2706,9 +3177,108 @@ stepToText step =
             text
 
 
+getTestInstrText : TestStage -> Maybe String
+getTestInstrText s =
+    M.map .instrText << .modal <| getTestStageConfig s
+
+
 buildMultilineId : String -> Int -> String
 buildMultilineId prefix i =
     prefix ++ "-" ++ ST.fromInt i
+
+
+getTestStageConfig : TestStage -> TestStageConfig
+getTestStageConfig s =
+    case s of
+        PrePrtc ->
+            { modal =
+                Just
+                    { instrText = "The following are " ++ ST.fromInt nPrtcRounds ++ " practice rounds.\n" ++ dedent """
+                        [cpr|Blue] will be a bot, so it will make decisions very quickly.
+                        After the practice rounds, you will be paired with a human to play the real game.
+                        """
+                    , waitTime = prePrtcWaitTime
+                    , nextStage = TtrlButton
+                    }
+            , gameMsg = Nothing
+            }
+
+        TtrlButton ->
+            { modal =
+                Just
+                    { instrText = dedent """
+                        You can click the “Tutorial” button in the lower right
+                        to review the tutorial any time.
+                        """
+                    , waitTime = 1
+                    , nextStage = Prtc
+                    }
+            , gameMsg = Nothing
+            }
+
+        Prtc ->
+            { modal = Nothing
+            , gameMsg = Just <| GameGoTo Act
+            }
+
+        DonePrtc ->
+            { modal =
+                Just
+                    { instrText = dedent """
+                        Good job!
+                        Now you will be paired with a human to play the real game.
+                        """
+                    , waitTime = 1
+                    , nextStage = Pairing
+                    }
+            , gameMsg = Just <| GameGoTo PostReview
+            }
+
+        Pairing ->
+            { modal =
+                Just
+                    { instrText =
+                        "Waiting for another participant...\n"
+                            ++ "(The wait time is usually "
+                            ++ ST.fromFloat minPairingTime
+                            ++ "–"
+                            ++ ST.fromFloat maxPairingTime
+                            ++ " seconds.)"
+                    , waitTime = 1
+                    , nextStage = Paired
+                    }
+            , gameMsg = Nothing
+            }
+
+        Paired ->
+            { modal =
+                Just
+                    { instrText =
+                        "Pairing success!\n"
+                            ++ "You will play "
+                            ++ ST.fromInt nRealRounds
+                            ++ " rounds of the game with the other participant."
+                    , waitTime = 1
+                    , nextStage = Real
+                    }
+            , gameMsg = Just <| GameGoTo PreAct
+            }
+
+        Real ->
+            { modal = Nothing
+            , gameMsg = Just <| GameGoTo Act
+            }
+
+        DoneReal ->
+            { modal =
+                Just
+                    { instrText =
+                        "Congratulations! You have completed the game."
+                    , waitTime = 1
+                    , nextStage = DoneReal
+                    }
+            , gameMsg = Nothing
+            }
 
 
 tfPtt : CTransforms
@@ -2883,16 +3453,57 @@ randomBoardConfig =
         (RA.float -0.1 0.1)
 
 
-generateBoardConfigs : Int -> Int -> A.Array BoardConfig
-generateBoardConfigs seed n =
+generateBoardConfigs : Int -> RA.Seed -> ( A.Array BoardConfig, RA.Seed )
+generateBoardConfigs n seed =
     let
-        s =
-            RA.initialSeed seed
-
-        ( l, _ ) =
-            State.run s <| State.traverse (State.advance << RA.step) (L.repeat n randomBoardConfig)
+        ( l, s ) =
+            State.run seed <| State.traverse (State.advance << RA.step) (L.repeat n randomBoardConfig)
     in
-    A.fromList l
+    ( A.fromList l, s )
+
+
+randomLambdaDeviate : RA.Generator Float
+randomLambdaDeviate =
+    RA.map2 (+) (RA.float -0.1 0.1) (RA.float -0.1 0.1)
+
+
+generateCprLambdaDeviates : Int -> RA.Seed -> ( A.Array Float, RA.Seed )
+generateCprLambdaDeviates n seed =
+    let
+        ( l, s ) =
+            State.run seed <| State.traverse (State.advance << RA.step) (L.repeat n randomLambdaDeviate)
+    in
+    ( A.fromList l, s )
+
+
+generatePairingTime : RA.Seed -> ( Float, RA.Seed )
+generatePairingTime =
+    RA.step <| RA.float minPairingTime maxPairingTime
+
+
+generateCprActTimes : Int -> RA.Seed -> ( A.Array Float, RA.Seed )
+generateCprActTimes n seed =
+    let
+        minTime i =
+            if i == 1 then
+                10
+
+            else
+                max (20 - toFloat i) 10
+                    + (if realMemoryRound i then
+                        5
+
+                       else
+                        0
+                      )
+
+        getGen i =
+            RA.float (minTime i) (minTime i + 5)
+
+        ( l, s ) =
+            State.run seed <| State.traverse (State.advance << RA.step) <| L.map getGen <| L.range 1 n
+    in
+    ( A.fromList l, s )
 
 
 calcAnimation : { startX : Float, startY : Float, endX : Float, endY : Float, t : Int } -> Maybe { x : Float, y : Float, v : Float }
@@ -2949,21 +3560,80 @@ rotatePoint deg { x, y } =
     { x = x * cos rad - y * sin rad, y = x * sin rad + y * cos rad }
 
 
-roundToOppReceiver : Int -> OppReceiver
-roundToOppReceiver r =
-    if L.member r [ 2, 3 ] then
+prtcOppReceiver : Int -> OppReceiver
+prtcOppReceiver r =
+    if L.member r [ 2, 5 ] then
         Slf
 
-    else if L.member r [ 4, 5 ] then
+    else if L.member r [ 3, 4 ] then
         Discard
 
     else
         Opp
 
 
-memoryRound : Int -> Bool
-memoryRound r =
-    L.member r [ 2, 3 ]
+realOppReceiver : Int -> OppReceiver
+realOppReceiver r =
+    if L.member r [ 3, 13 ] then
+        Slf
+
+    else if L.member r [ 9, 15 ] then
+        Discard
+
+    else
+        Opp
+
+
+prtcMemoryRound : Int -> Bool
+prtcMemoryRound r =
+    L.member r [ 1, 4 ]
+
+
+realMemoryRound : Int -> Bool
+realMemoryRound r =
+    L.member r [ 1, 5, 17 ]
+
+
+getPrtcBoardConfig : Int -> BoardConfig
+getPrtcBoardConfig r =
+    A.get (r - 1) randomThings.prtcBoardConfigs
+        |> M.withDefault defaultBoardConfig
+
+
+getRealBoardConfig : Int -> BoardConfig
+getRealBoardConfig r =
+    A.get (r - 1) randomThings.realBoardConfigs
+        |> M.withDefault defaultBoardConfig
+
+
+getPrtcCprLambda : Int -> Float
+getPrtcCprLambda r =
+    if prtcOppReceiver r == Slf then
+        1
+
+    else
+        0
+
+
+getRealCprLambda : Int -> Float
+getRealCprLambda r =
+    let
+        base =
+            case realOppReceiver r of
+                Opp ->
+                    1
+
+                Slf ->
+                    1
+
+                Discard ->
+                    0
+
+        deviate =
+            A.get (r // 2 - 1) randomThings.realCprLambdaDeviates
+                |> M.withDefault 0
+    in
+    base + deviate
 
 
 filterElements : Show unit -> List unit -> (unit -> List (Element msg)) -> List (Element msg)
@@ -2978,7 +3648,20 @@ filterElements show units f =
 
 getTtrlInstrLengths : Int -> Cmd msg
 getTtrlInstrLengths i =
-    getTextLengths << L.map (buildMultilineId ttrlInstrId) << L.range 1 << L.length << ST.split "\n" <| getInstrText i
+    getTextLengths << L.map (buildMultilineId ttrlTestInstrId) << L.range 1 << L.length << ST.split "\n" <| getTtrlInstrText i
+
+
+getTestInstrLengths : TestStage -> Cmd msg
+getTestInstrLengths s =
+    getTestInstrText s
+        |> M.map
+            (ST.split "\n"
+                >> L.length
+                >> L.range 1
+                >> L.map (buildMultilineId ttrlTestInstrId)
+                >> getTextLengths
+            )
+        |> M.withDefault C.none
 
 
 getGameInstrText : Player -> GameStage -> Maybe String
@@ -2991,7 +3674,14 @@ getGameInstrText p s =
             Just "Make a prediction"
 
         ( _, Memory ) ->
-            Just "Memory check"
+            Just <|
+                "[b|Memory check]\nTry to reproduce the location\nof "
+                    ++ (if p == Ptt then
+                            "[ptt|your handle]"
+
+                        else
+                            "[cpr|Blue's handle]"
+                       )
 
         _ ->
             Nothing
@@ -3045,8 +3735,8 @@ getBarNumberLengths show =
                     C.none
 
 
-setTestModelGame : (GameModel -> GameModel) -> TestModel -> TestModel
-setTestModelGame f m =
+setTestGame : (GameModel -> GameModel) -> TestModel -> TestModel
+setTestGame f m =
     { m | game = f m.game }
 
 
@@ -3072,22 +3762,62 @@ ttrlGameProps m =
             A.get (m.step - 1) ttrlSteps
     in
     { isTtrl = True
+    , isPrtc = False
+    , lastRound = False
     , player = M.withDefault Ptt <| M.map .player step
     , boardConfig = defaultBoardConfig
+    , cprLambda = 1
+    , cprActTime = Nothing
     , oppReceiver = M.withDefault Opp <| M.map .oppReceiver step
     , show = M.withDefault ShowAll <| M.map .gameShow step
     , memory = False
     }
 
 
+prtcStage : TestStage -> Bool
+prtcStage s =
+    L.member s [ PrePrtc, TtrlButton, Prtc, DonePrtc, Pairing ]
+
+
 testGameProps : TestModel -> GameProps
 testGameProps m =
+    let
+        show =
+            if L.member m.stage [ PrePrtc, TtrlButton ] then
+                ShowSome [ GUBoard, GUPttIcon, GUCprIcon, GUPttTotal, GUCprTotal, GUSlfPay, GUOppPay, GUSlider, GUConfirmButton, GUOthers ]
+
+            else
+                ShowAll
+
+        { boardConfig, cprLambda, oppReceiver, memory, lastRound, cprActTime } =
+            if prtcStage m.stage then
+                { boardConfig = getPrtcBoardConfig m.round
+                , cprLambda = getPrtcCprLambda m.round
+                , oppReceiver = prtcOppReceiver m.round
+                , memory = prtcMemoryRound m.round
+                , lastRound = m.round == nPrtcRounds
+                , cprActTime = Nothing
+                }
+
+            else
+                { boardConfig = getRealBoardConfig m.round
+                , cprLambda = getRealCprLambda m.round
+                , oppReceiver = realOppReceiver m.round
+                , memory = realMemoryRound m.round
+                , lastRound = m.round == nRealRounds
+                , cprActTime = A.get m.round randomThings.cprActTimes
+                }
+    in
     { isTtrl = False
+    , isPrtc = prtcStage m.stage
+    , lastRound = lastRound
     , player = roundToPlayer m.round
-    , boardConfig = M.withDefault defaultBoardConfig <| A.get (m.round - 1) testBoardConfigs
-    , oppReceiver = Opp
-    , show = ShowAll
-    , memory = memoryRound m.round
+    , boardConfig = boardConfig
+    , cprLambda = cprLambda
+    , cprActTime = cprActTime
+    , oppReceiver = oppReceiver
+    , show = show
+    , memory = memory
     }
 
 
@@ -3207,9 +3937,12 @@ ttrlDecoder =
 encodeTest : TestModel -> E.Value
 encodeTest t =
     E.object
-        [ ( "game", encodeGame t.game )
+        [ ( "stage", encodeTestStage t.stage )
+        , ( "game", encodeGame t.game )
         , ( "round", E.int t.round )
         , ( "instrLength", encodeMFloat t.instrLength )
+        , ( "readyForNext", E.bool t.readyForNext )
+        , ( "history", E.list encodeRoundData t.history )
         , ( "showTtrl", E.bool t.showTtrl )
         , ( "ttrl", encodeTtrl t.ttrl )
         ]
@@ -3218,25 +3951,99 @@ encodeTest t =
 testDecoder : D.Decoder TestModel
 testDecoder =
     D.succeed
-        (\g r i s t ->
-            { game = g
+        (\s g r i re h st t ->
+            { stage = s
+            , game = g
             , round = r
             , instrLength = i
-            , showTtrl = s
+            , readyForNext = re
+            , history = h
+            , showTtrl = st
             , ttrl = t
             }
         )
+        |> DP.required "stage" testStageDecoder
         |> DP.required "game" gameDecoder
         |> DP.required "round" D.int
         |> DP.required "instrLength" mFloatDecoder
+        |> DP.required "readyForNext" D.bool
+        |> DP.required "history" (D.list roundDataDecoder)
         |> DP.required "showTtrl" D.bool
         |> DP.required "ttrl" ttrlDecoder
+
+
+encodeTestStage : TestStage -> E.Value
+encodeTestStage s =
+    let
+        string =
+            case s of
+                PrePrtc ->
+                    "PrePrtc"
+
+                TtrlButton ->
+                    "TtrlButton"
+
+                Prtc ->
+                    "Prtc"
+
+                DonePrtc ->
+                    "DonePrtc"
+
+                Pairing ->
+                    "Pairing"
+
+                Paired ->
+                    "Paired"
+
+                Real ->
+                    "Real"
+
+                DoneReal ->
+                    "DoneReal"
+    in
+    E.string string
+
+
+stringToTestStage : String -> D.Decoder TestStage
+stringToTestStage s =
+    case s of
+        "PrePrtc" ->
+            D.succeed PrePrtc
+
+        "TtrlButton" ->
+            D.succeed TtrlButton
+
+        "Prtc" ->
+            D.succeed Prtc
+
+        "DonePrtc" ->
+            D.succeed DonePrtc
+
+        "Pairing" ->
+            D.succeed Pairing
+
+        "Paired" ->
+            D.succeed Paired
+
+        "Real" ->
+            D.succeed Real
+
+        "DoneReal" ->
+            D.succeed DoneReal
+
+        _ ->
+            D.fail <| "Unknown test stage: " ++ s
+
+
+testStageDecoder : D.Decoder TestStage
+testStageDecoder =
+    D.string |> D.andThen stringToTestStage
 
 
 encodeGame : GameModel -> E.Value
 encodeGame g =
     E.object
-        [ ( "stage", encodeStage g.stage )
+        [ ( "stage", encodeGameStage g.stage )
         , ( "lambda", encodeMFloat g.lambda )
         , ( "fixedLambda", encodeMFloat g.fixedLambda )
         , ( "prediction", encodeMFloat g.prediction )
@@ -3250,13 +4057,17 @@ encodeGame g =
         , ( "slfAnimationState", encodeAnimationState g.slfAnimationState )
         , ( "oppAnimationState", encodeAnimationState g.oppAnimationState )
         , ( "loadingStep", E.int g.loadingStep )
+        , ( "actStartTime", E.int g.actStartTime )
+        , ( "actStopTime", E.int g.actStopTime )
+        , ( "reviewStartTime", E.int g.reviewStartTime )
+        , ( "reviewStopTime", E.int g.reviewStopTime )
         ]
 
 
 gameDecoder : D.Decoder GameModel
 gameDecoder =
     D.succeed
-        (\s l fl p c pt m b i t a sa oa ls ->
+        (\s l fl p c pt m b i t a sa oa ls a1 a2 r1 r2 ->
             { stage = s
             , lambda = l
             , fixedLambda = fl
@@ -3271,9 +4082,13 @@ gameDecoder =
             , slfAnimationState = sa
             , oppAnimationState = oa
             , loadingStep = ls
+            , actStartTime = a1
+            , actStopTime = a2
+            , reviewStartTime = r1
+            , reviewStopTime = r2
             }
         )
-        |> DP.required "stage" stageDecoder
+        |> DP.required "stage" gameStageDecoder
         |> DP.required "lambda" mFloatDecoder
         |> DP.required "fixedLambda" mFloatDecoder
         |> DP.required "prediction" mFloatDecoder
@@ -3287,10 +4102,58 @@ gameDecoder =
         |> DP.required "slfAnimationState" animationStateDecoder
         |> DP.required "oppAnimationState" animationStateDecoder
         |> DP.required "loadingStep" D.int
+        |> DP.required "actStartTime" D.int
+        |> DP.required "actStopTime" D.int
+        |> DP.required "reviewStartTime" D.int
+        |> DP.required "reviewStopTime" D.int
 
 
-encodeStage : GameStage -> E.Value
-encodeStage s =
+encodeRoundData : RoundData -> E.Value
+encodeRoundData r =
+    E.object
+        [ ( "round", E.int r.round )
+        , ( "player", encodePlayer r.player )
+        , ( "boardConfig", encodeBoardConfig r.boardConfig )
+        , ( "oppReceiver", encodeOppReceiver r.oppReceiver )
+        , ( "pttLambda", encodeMFloat r.pttLambda )
+        , ( "predLambda", encodeMFloat r.predLambda )
+        , ( "cprLambda", encodeMFloat r.cprLambda )
+        , ( "memory", encodeMFloat r.memory )
+        , ( "actTime", E.float r.actTime )
+        , ( "reviewTime", E.float r.reviewTime )
+        ]
+
+
+roundDataDecoder : D.Decoder RoundData
+roundDataDecoder =
+    D.succeed
+        (\r p b o pt pr c m a re ->
+            { round = r
+            , player = p
+            , boardConfig = b
+            , oppReceiver = o
+            , pttLambda = pt
+            , predLambda = pr
+            , cprLambda = c
+            , memory = m
+            , actTime = a
+            , reviewTime = re
+            }
+        )
+        |> DP.required "round" D.int
+        |> DP.required "player" playerDecoder
+        |> DP.required "boardConfig" boardConfigDecoder
+        |> DP.required "oppReceiver" oppReceiverDecoder
+        |> DP.required "pttLambda" mFloatDecoder
+        |> DP.required "predLambda" mFloatDecoder
+        |> DP.required "cprLambda" mFloatDecoder
+        |> DP.required "memory" mFloatDecoder
+        |> DP.required "actTime" D.float
+        |> DP.required "reviewTime" D.float
+
+
+encodeGameStage : GameStage -> E.Value
+encodeGameStage s =
     let
         string =
             case s of
@@ -3333,52 +4196,51 @@ encodeStage s =
     E.string string
 
 
-stringToStage : String -> D.Decoder GameStage
-stringToStage s =
-    case s of
-        "PreAct" ->
-            D.succeed PreAct
+gameStageDecoder : D.Decoder GameStage
+gameStageDecoder =
+    D.string
+        |> D.andThen
+            (\s ->
+                case s of
+                    "PreAct" ->
+                        D.succeed PreAct
 
-        "Act" ->
-            D.succeed Act
+                    "Act" ->
+                        D.succeed Act
 
-        "PostAct" ->
-            D.succeed PostAct
+                    "PostAct" ->
+                        D.succeed PostAct
 
-        "ShowCpr" ->
-            D.succeed ShowCpr
+                    "ShowCpr" ->
+                        D.succeed ShowCpr
 
-        "CollectPays" ->
-            D.succeed CollectPays
+                    "CollectPays" ->
+                        D.succeed CollectPays
 
-        "PostCollectPays" ->
-            D.succeed PostCollectPays
+                    "PostCollectPays" ->
+                        D.succeed PostCollectPays
 
-        "ShowPredPay" ->
-            D.succeed ShowPredPay
+                    "ShowPredPay" ->
+                        D.succeed ShowPredPay
 
-        "CollectPredPay" ->
-            D.succeed CollectPredPay
+                    "CollectPredPay" ->
+                        D.succeed CollectPredPay
 
-        "PostCollectPredPay" ->
-            D.succeed PostCollectPredPay
+                    "PostCollectPredPay" ->
+                        D.succeed PostCollectPredPay
 
-        "Review" ->
-            D.succeed Review
+                    "Review" ->
+                        D.succeed Review
 
-        "PostReview" ->
-            D.succeed PostReview
+                    "PostReview" ->
+                        D.succeed PostReview
 
-        "Memory" ->
-            D.succeed Memory
+                    "Memory" ->
+                        D.succeed Memory
 
-        _ ->
-            D.fail <| "Unknown stage: " ++ s
-
-
-stageDecoder : D.Decoder GameStage
-stageDecoder =
-    D.string |> D.andThen stringToStage
+                    _ ->
+                        D.fail <| "Unknown game stage: " ++ s
+            )
 
 
 encodeMFloat : Maybe Float -> E.Value
@@ -3411,53 +4273,83 @@ mIntDecoder =
     D.nullable D.int
 
 
+encodeBoardConfig : BoardConfig -> E.Value
+encodeBoardConfig b =
+    E.object
+        [ ( "location", encodeSliderLocation b.location )
+        , ( "vx", E.float b.vx )
+        , ( "vy", E.float b.vy )
+        , ( "scale", E.float b.scale )
+        ]
 
--- encodeHalf : Half -> E.Value
--- encodeHalf h =
---     case h of
---         Lower ->
---             E.string "Lower"
---         Upper ->
---             E.string "Upper"
--- encodeSliderLocation : SliderLocation -> E.Value
--- encodeSliderLocation l =
---     case l of
---         FullBoard ->
---             E.object [ ( "kind", E.string "FullBoard" ) ]
---         Quadrant { xHalf, yHalf } ->
---             E.object
---                 [ ( "kind", E.string "Quadrant" )
---                 , ( "xHalf", encodeHalf xHalf )
---                 , ( "yHalf", encodeHalf yHalf )
---                 ]
--- encodeBoardConfig : BoardConfig -> E.Value
--- encodeBoardConfig b =
---     E.object
---         [ ( "location", encodeSliderLocation b.location )
---         , ( "vx", E.float b.vx )
---         , ( "vy", E.float b.vy )
---         , ( "scale", E.float b.scale )
---         ]
--- stringToHalf : String -> D.Decoder Half
--- stringToHalf s =
---     case s of
---         "Lower" ->
---             D.succeed Lower
---         "Upper" ->
---             D.succeed Upper
---         _ ->
---             D.fail <| "Unknown Half: " ++ s
--- halfDecoder : D.Decoder Half
--- halfDecoder =
---     D.string |> D.andThen stringToHalf
--- boardConfigDecoder : D.Decoder BoardConfig
--- boardConfigDecoder =
---     D.map5 (\xHalf yHalf vx vy scale -> { xHalf = xHalf, yHalf = yHalf, vx = vx, vy = vy, scale = scale })
---         (D.field "xHalf" halfDecoder)
---         (D.field "yHalf" halfDecoder)
---         (D.field "vx" D.float)
---         (D.field "vy" D.float)
---         (D.field "scale" D.float)
+
+boardConfigDecoder : D.Decoder BoardConfig
+boardConfigDecoder =
+    D.succeed (\l vx vy sc -> { location = l, vx = vx, vy = vy, scale = sc })
+        |> DP.required "location" sliderLocationDecoder
+        |> DP.required "vx" D.float
+        |> DP.required "vy" D.float
+        |> DP.required "scale" D.float
+
+
+encodeSliderLocation : SliderLocation -> E.Value
+encodeSliderLocation l =
+    case l of
+        FullBoard ->
+            E.object [ ( "kind", E.string "FullBoard" ) ]
+
+        Quadrant { xHalf, yHalf } ->
+            E.object
+                [ ( "kind", E.string "Quadrant" )
+                , ( "xHalf", encodeHalf xHalf )
+                , ( "yHalf", encodeHalf yHalf )
+                ]
+
+
+sliderLocationDecoder : D.Decoder SliderLocation
+sliderLocationDecoder =
+    D.field "kind" D.string
+        |> D.andThen
+            (\k ->
+                case k of
+                    "FullBoard" ->
+                        D.succeed FullBoard
+
+                    "Quadrant" ->
+                        D.succeed (\x y -> Quadrant { xHalf = x, yHalf = y })
+                            |> DP.required "xHalf" halfDecoder
+                            |> DP.required "yHalf" halfDecoder
+
+                    _ ->
+                        D.fail <| "Unknown slider location kind: " ++ k
+            )
+
+
+encodeHalf : Half -> E.Value
+encodeHalf h =
+    case h of
+        Lower ->
+            E.string "Lower"
+
+        Upper ->
+            E.string "Upper"
+
+
+halfDecoder : D.Decoder Half
+halfDecoder =
+    D.string
+        |> D.andThen
+            (\s ->
+                case s of
+                    "Lower" ->
+                        D.succeed Lower
+
+                    "Upper" ->
+                        D.succeed Upper
+
+                    _ ->
+                        D.fail <| "Unknown Half: " ++ s
+            )
 
 
 encodeMouseStatus : MouseStatus -> E.Value
@@ -3480,29 +4372,27 @@ encodeMouseStatus m =
     E.string string
 
 
-stringToMouseStatus : String -> D.Decoder MouseStatus
-stringToMouseStatus s =
-    case s of
-        "UpOut" ->
-            D.succeed UpOut
-
-        "UpIn" ->
-            D.succeed UpIn
-
-        "DownOut" ->
-            D.succeed DownOut
-
-        "DownIn" ->
-            D.succeed DownIn
-
-        _ ->
-            D.fail <| "Unknown mouse status: " ++ s
-
-
 mouseStatusDecoder : D.Decoder MouseStatus
 mouseStatusDecoder =
     D.string
-        |> D.andThen stringToMouseStatus
+        |> D.andThen
+            (\s ->
+                case s of
+                    "UpOut" ->
+                        D.succeed UpOut
+
+                    "UpIn" ->
+                        D.succeed UpIn
+
+                    "DownOut" ->
+                        D.succeed DownOut
+
+                    "DownIn" ->
+                        D.succeed DownIn
+
+                    _ ->
+                        D.fail <| "Unknown mouse status: " ++ s
+            )
 
 
 encodeBBox : BBox -> E.Value
@@ -3547,6 +4437,66 @@ animationStateDecoder =
             (D.field "x" D.float)
             (D.field "y" D.float)
             (D.field "v" D.float)
+
+
+encodePlayer : Player -> E.Value
+encodePlayer p =
+    case p of
+        Ptt ->
+            E.string "Ptt"
+
+        Cpr ->
+            E.string "Cpr"
+
+
+playerDecoder : D.Decoder Player
+playerDecoder =
+    D.string
+        |> D.andThen
+            (\s ->
+                case s of
+                    "Ptt" ->
+                        D.succeed Ptt
+
+                    "Cpr" ->
+                        D.succeed Cpr
+
+                    _ ->
+                        D.fail <| "Unknown player: " ++ s
+            )
+
+
+encodeOppReceiver : OppReceiver -> E.Value
+encodeOppReceiver p =
+    case p of
+        Opp ->
+            E.string "Opp"
+
+        Slf ->
+            E.string "Slf"
+
+        Discard ->
+            E.string "Discard"
+
+
+oppReceiverDecoder : D.Decoder OppReceiver
+oppReceiverDecoder =
+    D.string
+        |> D.andThen
+            (\s ->
+                case s of
+                    "Opp" ->
+                        D.succeed Opp
+
+                    "Slf" ->
+                        D.succeed Slf
+
+                    "Discard" ->
+                        D.succeed Discard
+
+                    _ ->
+                        D.fail <| "Unknown opp receiver: " ++ s
+            )
 
 
 

@@ -1,10 +1,17 @@
 module Colors exposing (..)
 
 import Color as C
+import Color.Convert as CC
+import Css
+import Dict as DI
 
 
 type alias Hue =
     Int -> C.Color
+
+
+type alias ColorsDict =
+    DI.Dict String C.Color
 
 
 reds : Hue
@@ -345,3 +352,27 @@ setAlpha a c =
             C.toRgba c
     in
     C.fromRgba <| { rgba | alpha = a }
+
+
+colorToCss : C.Color -> Css.Color
+colorToCss =
+    CC.colorToHexWithAlpha >> Css.hex
+
+
+hPtt : Hue
+hPtt =
+    reds
+
+
+hCpr : Hue
+hCpr =
+    blues
+
+
+colorsDict : ColorsDict
+colorsDict =
+    DI.fromList
+        [ ( "ptt", hPtt 10 )
+        , ( "cpr", hCpr 10 )
+        , ( "discard", grays 10 )
+        ]

@@ -1,12 +1,14 @@
 module SvgHelper exposing
     ( Anchor
-    , ColorsDict
     , Element(..)
+    , Fragment(..)
     , PointerEvents(..)
     , QBezierConfig
     , Shape(..)
+    , StylesDict
     , TextAnchor(..)
     , activeFill
+    , baseStylesDict
     , check
     , circle
     , complexCH
@@ -42,6 +44,7 @@ module SvgHelper exposing
     , tabularNums
     , textA
     , textC
+    , textParser
     , user
     , vectorLength
     , west
@@ -151,10 +154,6 @@ type alias Style msg =
 
 type alias StylesDict =
     DI.Dict String Css.Style
-
-
-type alias ColorsDict =
-    DI.Dict String C.Color
 
 
 noStyle : Style msg
@@ -277,8 +276,8 @@ tabularNums (Element shape style) =
     Element shape { style | tabularNums = True }
 
 
-draw : ColorsDict -> Element msg -> List (S.Svg msg)
-draw colors (Element shape style) =
+draw : Element msg -> List (S.Svg msg)
+draw (Element shape style) =
     let
         styleAttrs : List (S.Attribute msg)
         styleAttrs =
@@ -297,8 +296,8 @@ draw colors (Element shape style) =
                     << listToMaybe
                   <|
                     flattenMaybe
-                        [ M.map (Css.hover << L.singleton << Css.fill << colorToCssColor) style.hoverFill
-                        , M.map (Css.active << L.singleton << Css.fill << colorToCssColor) style.activeFill
+                        [ M.map (Css.hover << L.singleton << Css.fill << colorToCss) style.hoverFill
+                        , M.map (Css.active << L.singleton << Css.fill << colorToCss) style.activeFill
                         , if style.hidden then
                             Just (Css.visibility Css.hidden)
 
@@ -474,18 +473,18 @@ draw colors (Element shape style) =
                     ]
                 )
               <|
-                L.map (drawFragment colors) fragments
+                L.map drawFragment fragments
             ]
 
 
-drawFragment : ColorsDict -> Fragment -> S.Svg msg
-drawFragment colors f =
+drawFragment : Fragment -> S.Svg msg
+drawFragment f =
     case f of
         Plain t ->
             S.text t
 
-        TSpan { styles, text } ->
-            S.tspan [ SA.css << flattenMaybe <| L.map (\s -> DI.get s <| makeStylesDict colors) styles ] [ S.text text ]
+        Span { styles, text } ->
+            S.tspan [ SA.css << flattenMaybe <| L.map (\s -> DI.get s stylesDict) styles ] [ S.text text ]
 
 
 baseStylesDict : StylesDict
@@ -495,9 +494,9 @@ baseStylesDict =
         ]
 
 
-makeStylesDict : DI.Dict String C.Color -> StylesDict
-makeStylesDict colors =
-    DI.union baseStylesDict <| DI.map (\_ c -> Css.fill <| colorToCssColor c) colors
+stylesDict : StylesDict
+stylesDict =
+    DI.union baseStylesDict <| DI.map (\_ c -> Css.fill <| colorToCss c) colorsDict
 
 
 transforms : List String -> S.Attribute msg
@@ -649,11 +648,6 @@ textBaselineToOffset b =
             0
 
 
-flattenMaybe : List (Maybe a) -> List a
-flattenMaybe =
-    L.concatMap maybeToList
-
-
 listToMaybe : List a -> Maybe (List a)
 listToMaybe l =
     case l of
@@ -667,11 +661,6 @@ listToMaybe l =
 fFloat : String -> Float -> String -> String
 fFloat old new =
     ST.replace ("{" ++ old ++ "}") (ST.fromFloat new)
-
-
-colorToCssColor : C.Color -> Css.Color
-colorToCssColor =
-    CC.colorToHexWithAlpha >> Css.hex
 
 
 west : Anchor
@@ -734,7 +723,7 @@ vectorLength x y =
 
 type Fragment
     = Plain String
-    | TSpan
+    | Span
         { styles : List String
         , text : String
         }
@@ -748,7 +737,7 @@ textParser =
 textParserHelp : List Fragment -> P.Parser (P.Step (List Fragment) (List Fragment))
 textParserHelp fs =
     P.oneOf
-        [ P.succeed (\s t -> P.Loop (TSpan { styles = ST.split " " s, text = t } :: fs))
+        [ P.succeed (\s t -> P.Loop (Span { styles = ST.split " " s, text = t } :: fs))
             |. P.chompIf (\c -> c == '[')
             |= (P.chompWhile (\c -> c /= '|') |> P.getChompedString)
             |. P.token "|"

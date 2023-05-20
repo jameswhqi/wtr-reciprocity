@@ -57,8 +57,6 @@ import Svg.Styled.Attributes as SA
 import SvgHelper exposing (..)
 import Task as T
 import Time
-import Url.Parser as UP
-import Url.Parser.Query as UQ
 import Utils exposing (..)
 
 
@@ -2279,11 +2277,6 @@ thumbId =
     "thumb"
 
 
-predictionThumbId : String
-predictionThumbId =
-    "predictionThumb"
-
-
 slfBarNumberId : String
 slfBarNumberId =
     "slfBarNumber"
@@ -3615,21 +3608,6 @@ getBarNumberLengths show =
 
                 _ ->
                     C.none
-
-
-setTestGame : (GameModel -> GameModel) -> TestModel -> TestModel
-setTestGame f m =
-    { m | game = f m.game }
-
-
-setTestModelTttr : (TtrlModel -> TtrlModel) -> TestModel -> TestModel
-setTestModelTttr f m =
-    { m | ttrl = f m.ttrl }
-
-
-setTtrlModelGame : (GameModel -> GameModel) -> TtrlModel -> TtrlModel
-setTtrlModelGame f m =
-    { m | game = f m.game }
 
 
 dedent : String -> String

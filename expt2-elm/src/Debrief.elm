@@ -104,7 +104,8 @@ type MouseStatus
 
 
 type Msg
-    = TextInput Int String
+    = NoOp
+    | TextInput Int String
     | TextBlur Int
     | RadioInput Int String
     | MouseEnter Int
@@ -451,6 +452,7 @@ viewQuestion active qi a qc qm =
                             , S.border3 (S.px dTrackBorderWidth) S.solid (colorToCss <| grays 0)
                             , S.borderRadius <| S.px <| dTrackHeight / 2
                             ]
+                        , noSelect
                         ]
                         []
 
@@ -471,6 +473,7 @@ viewQuestion active qi a qc qm =
                             , S.backgroundColor <| S.hex "7f7f7f"
                             , getTickLeft i
                             ]
+                        , noSelect
                         ]
                         []
                     , H.div
@@ -481,9 +484,9 @@ viewQuestion active qi a qc qm =
                             , S.transform <| S.translateX <| S.pct -50
                             , S.fontSize <| S.px 18
                             , S.cursor S.default
-                            , S.property "user-select" "none"
                             , getTickLeft i
                             ]
+                        , noSelect
                         ]
                         [ H.text label ]
                     ]
@@ -515,6 +518,7 @@ viewQuestion active qi a qc qm =
                                         * 100
                             , S.backgroundColor <| S.hex thumbBg
                             ]
+                        , noSelect
                         ]
                         []
             in
@@ -525,6 +529,7 @@ viewQuestion active qi a qc qm =
                         , S.width (S.pct 100)
                         , S.height (S.px 90)
                         ]
+                    , noSelect
                     , HA.id <| sliderId qi
                     , HE.onMouseEnter <| MouseEnter qi
                     , HE.onMouseLeave <| MouseLeave qi
@@ -742,6 +747,11 @@ dTickHeight =
 dTickSep : Float
 dTickSep =
     8
+
+
+noSelect : H.Attribute Msg
+noSelect =
+    HE.preventDefaultOn "mousedown" <| D.succeed ( NoOp, True )
 
 
 
@@ -1015,14 +1025,7 @@ encode m =
 
 decoder : D.Decoder Model
 decoder =
-    D.succeed
-        (\p q a m ->
-            { page = p
-            , qModels = q
-            , answers = a
-            , mouseStatus = m
-            }
-        )
+    D.succeed Model
         |> DP.required "page" D.int
         |> DP.required "qModels" (D.list qModelDecoder)
         |> DP.required "answers" (D.dict answerDecoder)
@@ -1065,19 +1068,22 @@ qModelDecoder =
             (\k ->
                 case k of
                     "QText" ->
-                        D.succeed (\v t -> QText { value = v, touched = t })
+                        D.succeed TextModel
                             |> DP.required "value" D.string
                             |> DP.required "touched" D.bool
+                            |> D.map QText
 
                     "QRadio" ->
-                        D.succeed (\v -> QRadio { value = v })
+                        D.succeed RadioModel
                             |> DP.required "value" D.string
+                            |> D.map QRadio
 
                     "QSlider" ->
-                        D.succeed (\v t b -> QSlider { value = v, touched = t, bBox = b })
+                        D.succeed SliderModel
                             |> DP.required "value" D.int
                             |> DP.required "touched" D.bool
                             |> DP.required "bBox" bBoxDecoder
+                            |> D.map QSlider
 
                     "QNull" ->
                         D.succeed QNull
@@ -1137,14 +1143,14 @@ mouseStatusDecoder =
                         D.succeed UpOut
 
                     "UpIn" ->
-                        D.succeed (\i -> UpIn i)
+                        D.succeed UpIn
                             |> DP.required "i" D.int
 
                     "DownOut" ->
                         D.succeed DownOut
 
                     "DownIn" ->
-                        D.succeed (\i -> DownIn i)
+                        D.succeed DownIn
                             |> DP.required "i" D.int
 
                     _ ->

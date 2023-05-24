@@ -426,7 +426,7 @@ initRealCmd p =
         [ getBoard
         , getGameInstrLengths Ptt Act
         , P.sleep ((A.get 0 randomThings.cprActTimes |> M.withDefault 0) * 1000 / p.waitSpeedRatio)
-            |> T.perform (\_ -> NormalGameMsg CprAct)
+            |> T.perform (always <| NormalGameMsg CprAct)
         ]
 
 
@@ -843,7 +843,7 @@ updateGame wrapper msg p gp model =
                             else
                                 ( 0
                                 , P.sleep ((A.get 0 randomThings.cprActTimes |> M.withDefault 0) * 1000 / p.waitSpeedRatio)
-                                    |> T.perform (\_ -> CprAct)
+                                    |> T.perform (always CprAct)
                                     |> wrap
                                 )
                     in
@@ -872,7 +872,7 @@ updateGame wrapper msg p gp model =
                                 C.none
 
                             else
-                                P.sleep 200 |> T.perform (\_ -> CprAct) |> wrap
+                                P.sleep 200 |> T.perform (always CprAct) |> wrap
 
                         c2 =
                             getTime gp Act
@@ -927,14 +927,14 @@ updateGame wrapper msg p gp model =
 
                 GameGoTo ShowCpr ->
                     ( { m | stage = ShowCpr, lambda = Just gp.cprLambda, fixedLambda = Just gp.cprLambda }
-                    , P.sleep 1000 |> T.perform (\_ -> GameGoTo CollectPays) |> wrap
+                    , P.sleep 1000 |> T.perform (always <| GameGoTo CollectPays) |> wrap
                     )
 
                 GameGoTo CollectPays ->
                     let
                         getC cprActTime =
                             P.sleep (cprActTime * 1000 / p.waitSpeedRatio)
-                                |> T.perform (\_ -> CprAct)
+                                |> T.perform (always CprAct)
                                 |> wrap
                     in
                     ( { m | stage = CollectPays, cprActed = False }
@@ -972,7 +972,7 @@ updateGame wrapper msg p gp model =
                     ( { m | stage = ShowPredPay }
                     , C.batch
                         [ getTextLengths [ predPayId ]
-                        , P.sleep 1000 |> T.perform (\_ -> GameGoTo stage) |> wrap
+                        , P.sleep 1000 |> T.perform (always <| GameGoTo stage) |> wrap
                         , c
                         ]
                     )
@@ -3744,7 +3744,7 @@ encodeTtrl t =
         [ ( "game", encodeGame t.game )
         , ( "step", E.int t.step )
         , ( "latestStep", E.int t.latestStep )
-        , ( "instrLength", encodeMFloat t.instrLength )
+        , ( "instrLength", encodeMaybe E.float t.instrLength )
         , ( "readyForNext", E.bool t.readyForNext )
         , ( "gameStates", E.array encodeGame t.gameStates )
         ]
@@ -3752,11 +3752,11 @@ encodeTtrl t =
 
 ttrlDecoder : D.Decoder TtrlModel
 ttrlDecoder =
-    D.succeed (\g s l m r gs -> { game = g, step = s, latestStep = l, instrLength = m, readyForNext = r, gameStates = gs })
+    D.succeed TtrlModel
         |> DP.required "game" gameDecoder
         |> DP.required "step" D.int
         |> DP.required "latestStep" D.int
-        |> DP.required "instrLength" mFloatDecoder
+        |> DP.required "instrLength" (D.nullable D.float)
         |> DP.required "readyForNext" D.bool
         |> DP.required "gameStates" (D.array gameDecoder)
 
@@ -3764,10 +3764,10 @@ ttrlDecoder =
 encodeTest : TestModel -> E.Value
 encodeTest t =
     E.object
-        [ ( "stage", encodeTestStage t.stage )
+        [ ( "stage", encodePairs testStagePairs t.stage )
         , ( "game", encodeGame t.game )
         , ( "round", E.int t.round )
-        , ( "instrLength", encodeMFloat t.instrLength )
+        , ( "instrLength", encodeMaybe E.float t.instrLength )
         , ( "readyForNext", E.bool t.readyForNext )
         , ( "history", E.list encodeRoundData t.history )
         , ( "showTtrl", E.bool t.showTtrl )
@@ -3777,115 +3777,45 @@ encodeTest t =
 
 testDecoder : D.Decoder TestModel
 testDecoder =
-    D.succeed
-        (\s g r i re h st t ->
-            { stage = s
-            , game = g
-            , round = r
-            , instrLength = i
-            , readyForNext = re
-            , history = h
-            , showTtrl = st
-            , ttrl = t
-            }
-        )
-        |> DP.required "stage" testStageDecoder
+    D.succeed TestModel
+        |> DP.required "stage" (pairsDecoder testStagePairs)
         |> DP.required "game" gameDecoder
         |> DP.required "round" D.int
-        |> DP.required "instrLength" mFloatDecoder
+        |> DP.required "instrLength" (D.nullable D.float)
         |> DP.required "readyForNext" D.bool
         |> DP.required "history" (D.list roundDataDecoder)
         |> DP.required "showTtrl" D.bool
         |> DP.required "ttrl" ttrlDecoder
 
 
-encodeTestStage : TestStage -> E.Value
-encodeTestStage s =
-    let
-        string =
-            case s of
-                PrePrtc ->
-                    "PrePrtc"
-
-                TtrlButton ->
-                    "TtrlButton"
-
-                Prtc ->
-                    "Prtc"
-
-                DonePrtc ->
-                    "DonePrtc"
-
-                Pairing ->
-                    "Pairing"
-
-                Paired ->
-                    "Paired"
-
-                Flipped ->
-                    "Flipped"
-
-                Real ->
-                    "Real"
-
-                DoneReal ->
-                    "DoneReal"
-    in
-    E.string string
-
-
-testStageDecoder : D.Decoder TestStage
-testStageDecoder =
-    D.string
-        |> D.andThen
-            (\s ->
-                case s of
-                    "PrePrtc" ->
-                        D.succeed PrePrtc
-
-                    "TtrlButton" ->
-                        D.succeed TtrlButton
-
-                    "Prtc" ->
-                        D.succeed Prtc
-
-                    "DonePrtc" ->
-                        D.succeed DonePrtc
-
-                    "Pairing" ->
-                        D.succeed Pairing
-
-                    "Paired" ->
-                        D.succeed Paired
-
-                    "Flipped" ->
-                        D.succeed Flipped
-
-                    "Real" ->
-                        D.succeed Real
-
-                    "DoneReal" ->
-                        D.succeed DoneReal
-
-                    _ ->
-                        D.fail <| "Unknown test stage: " ++ s
-            )
+testStagePairs : JsonPairs TestStage
+testStagePairs =
+    [ ( PrePrtc, "PrePrtc" )
+    , ( TtrlButton, "TtrlButton" )
+    , ( Prtc, "Prtc" )
+    , ( DonePrtc, "DonePrtc" )
+    , ( Pairing, "Pairing" )
+    , ( Paired, "Paired" )
+    , ( Flipped, "Flipped" )
+    , ( Real, "Real" )
+    , ( DoneReal, "DoneReal" )
+    ]
 
 
 encodeGame : GameModel -> E.Value
 encodeGame g =
     E.object
-        [ ( "stage", encodeGameStage g.stage )
-        , ( "lambda", encodeMFloat g.lambda )
-        , ( "fixedLambda", encodeMFloat g.fixedLambda )
-        , ( "prediction", encodeMFloat g.prediction )
+        [ ( "stage", encodePairs gameStagePairs g.stage )
+        , ( "lambda", encodeMaybe E.float g.lambda )
+        , ( "fixedLambda", encodeMaybe E.float g.fixedLambda )
+        , ( "prediction", encodeMaybe E.float g.prediction )
         , ( "cprActed", E.bool g.cprActed )
         , ( "pttTotal", E.float g.pttTotal )
-        , ( "mouseStatus", encodeMouseStatus g.mouseStatus )
+        , ( "mouseStatus", encodePairs mouseStatusPairs g.mouseStatus )
         , ( "board", encodeBBox g.board )
-        , ( "instrLength", encodeMFloat g.instrLength )
+        , ( "instrLength", encodeMaybe E.float g.instrLength )
         , ( "textLengths", E.dict identity E.float g.textLengths )
-        , ( "animationStartTime", encodeMInt g.animationStartTime )
+        , ( "animationStartTime", encodeMaybe E.int g.animationStartTime )
         , ( "slfAnimationState", encodeAnimationState g.slfAnimationState )
         , ( "oppAnimationState", encodeAnimationState g.oppAnimationState )
         , ( "loadingStep", E.int g.loadingStep )
@@ -3898,39 +3828,18 @@ encodeGame g =
 
 gameDecoder : D.Decoder GameModel
 gameDecoder =
-    D.succeed
-        (\s l fl p c pt m b i t a sa oa ls a1 a2 r1 r2 ->
-            { stage = s
-            , lambda = l
-            , fixedLambda = fl
-            , prediction = p
-            , cprActed = c
-            , pttTotal = pt
-            , mouseStatus = m
-            , board = b
-            , instrLength = i
-            , textLengths = t
-            , animationStartTime = a
-            , slfAnimationState = sa
-            , oppAnimationState = oa
-            , loadingStep = ls
-            , actStartTime = a1
-            , actStopTime = a2
-            , reviewStartTime = r1
-            , reviewStopTime = r2
-            }
-        )
-        |> DP.required "stage" gameStageDecoder
-        |> DP.required "lambda" mFloatDecoder
-        |> DP.required "fixedLambda" mFloatDecoder
-        |> DP.required "prediction" mFloatDecoder
+    D.succeed GameModel
+        |> DP.required "stage" (pairsDecoder gameStagePairs)
+        |> DP.required "lambda" (D.nullable D.float)
+        |> DP.required "fixedLambda" (D.nullable D.float)
+        |> DP.required "prediction" (D.nullable D.float)
         |> DP.required "cprActed" D.bool
         |> DP.required "pttTotal" D.float
-        |> DP.required "mouseStatus" mouseStatusDecoder
+        |> DP.required "mouseStatus" (pairsDecoder mouseStatusPairs)
         |> DP.required "board" bBoxDecoder
-        |> DP.required "instrLength" mFloatDecoder
+        |> DP.required "instrLength" (D.nullable D.float)
         |> DP.required "textLengths" (D.dict D.float)
-        |> DP.required "animationStartTime" mIntDecoder
+        |> DP.required "animationStartTime" (D.nullable D.int)
         |> DP.required "slfAnimationState" animationStateDecoder
         |> DP.required "oppAnimationState" animationStateDecoder
         |> DP.required "loadingStep" D.int
@@ -3944,13 +3853,13 @@ encodeRoundData : RoundData -> E.Value
 encodeRoundData r =
     E.object
         [ ( "round", E.int r.round )
-        , ( "player", encodePlayer r.player )
+        , ( "player", encodePairs playerPairs r.player )
         , ( "boardConfig", encodeBoardConfig r.boardConfig )
-        , ( "oppReceiver", encodeOppReceiver r.oppReceiver )
-        , ( "pttLambda", encodeMFloat r.pttLambda )
-        , ( "predLambda", encodeMFloat r.predLambda )
-        , ( "cprLambda", encodeMFloat r.cprLambda )
-        , ( "memory", encodeMFloat r.memory )
+        , ( "oppReceiver", encodePairs oppReceiverPairs r.oppReceiver )
+        , ( "pttLambda", encodeMaybe E.float r.pttLambda )
+        , ( "predLambda", encodeMaybe E.float r.predLambda )
+        , ( "cprLambda", encodeMaybe E.float r.cprLambda )
+        , ( "memory", encodeMaybe E.float r.memory )
         , ( "actTime", E.float r.actTime )
         , ( "reviewTime", E.float r.reviewTime )
         ]
@@ -3958,151 +3867,34 @@ encodeRoundData r =
 
 roundDataDecoder : D.Decoder RoundData
 roundDataDecoder =
-    D.succeed
-        (\r p b o pt pr c m a re ->
-            { round = r
-            , player = p
-            , boardConfig = b
-            , oppReceiver = o
-            , pttLambda = pt
-            , predLambda = pr
-            , cprLambda = c
-            , memory = m
-            , actTime = a
-            , reviewTime = re
-            }
-        )
+    D.succeed RoundData
         |> DP.required "round" D.int
-        |> DP.required "player" playerDecoder
+        |> DP.required "player" (pairsDecoder playerPairs)
         |> DP.required "boardConfig" boardConfigDecoder
-        |> DP.required "oppReceiver" oppReceiverDecoder
-        |> DP.required "pttLambda" mFloatDecoder
-        |> DP.required "predLambda" mFloatDecoder
-        |> DP.required "cprLambda" mFloatDecoder
-        |> DP.required "memory" mFloatDecoder
+        |> DP.required "oppReceiver" (pairsDecoder oppReceiverPairs)
+        |> DP.required "pttLambda" (D.nullable D.float)
+        |> DP.required "predLambda" (D.nullable D.float)
+        |> DP.required "cprLambda" (D.nullable D.float)
+        |> DP.required "memory" (D.nullable D.float)
         |> DP.required "actTime" D.float
         |> DP.required "reviewTime" D.float
 
 
-encodeGameStage : GameStage -> E.Value
-encodeGameStage s =
-    let
-        string =
-            case s of
-                PreAct ->
-                    "PreAct"
-
-                Act ->
-                    "Act"
-
-                PostAct ->
-                    "PostAct"
-
-                ShowCpr ->
-                    "ShowCpr"
-
-                CollectPays ->
-                    "CollectPays"
-
-                PostCollectPays ->
-                    "PostCollectPays"
-
-                ShowPredPay ->
-                    "ShowPredPay"
-
-                CollectPredPay ->
-                    "CollectPredPay"
-
-                PostCollectPredPay ->
-                    "PostCollectPredPay"
-
-                Review ->
-                    "Review"
-
-                PostReview ->
-                    "PostReview"
-
-                Memory ->
-                    "Memory"
-    in
-    E.string string
-
-
-gameStageDecoder : D.Decoder GameStage
-gameStageDecoder =
-    D.string
-        |> D.andThen
-            (\s ->
-                case s of
-                    "PreAct" ->
-                        D.succeed PreAct
-
-                    "Act" ->
-                        D.succeed Act
-
-                    "PostAct" ->
-                        D.succeed PostAct
-
-                    "ShowCpr" ->
-                        D.succeed ShowCpr
-
-                    "CollectPays" ->
-                        D.succeed CollectPays
-
-                    "PostCollectPays" ->
-                        D.succeed PostCollectPays
-
-                    "ShowPredPay" ->
-                        D.succeed ShowPredPay
-
-                    "CollectPredPay" ->
-                        D.succeed CollectPredPay
-
-                    "PostCollectPredPay" ->
-                        D.succeed PostCollectPredPay
-
-                    "Review" ->
-                        D.succeed Review
-
-                    "PostReview" ->
-                        D.succeed PostReview
-
-                    "Memory" ->
-                        D.succeed Memory
-
-                    _ ->
-                        D.fail <| "Unknown game stage: " ++ s
-            )
-
-
-encodeMFloat : Maybe Float -> E.Value
-encodeMFloat mf =
-    case mf of
-        Nothing ->
-            E.null
-
-        Just f ->
-            E.float f
-
-
-mFloatDecoder : D.Decoder (Maybe Float)
-mFloatDecoder =
-    D.nullable D.float
-
-
-encodeMInt : Maybe Int -> E.Value
-encodeMInt mf =
-    case mf of
-        Nothing ->
-            E.null
-
-        Just f ->
-            E.int f
-
-
-mIntDecoder : D.Decoder (Maybe Int)
-mIntDecoder =
-    D.nullable D.int
+gameStagePairs : JsonPairs GameStage
+gameStagePairs =
+    [ ( PreAct, "PreAct" )
+    , ( Act, "Act" )
+    , ( PostAct, "PostAct" )
+    , ( ShowCpr, "ShowCpr" )
+    , ( CollectPays, "CollectPays" )
+    , ( PostCollectPays, "PostCollectPays" )
+    , ( ShowPredPay, "ShowPredPay" )
+    , ( CollectPredPay, "CollectPredPay" )
+    , ( PostCollectPredPay, "PostCollectPredPay" )
+    , ( Review, "Review" )
+    , ( PostReview, "PostReview" )
+    , ( Memory, "Memory" )
+    ]
 
 
 encodeBoardConfig : BoardConfig -> E.Value
@@ -4117,7 +3909,7 @@ encodeBoardConfig b =
 
 boardConfigDecoder : D.Decoder BoardConfig
 boardConfigDecoder =
-    D.succeed (\l vx vy sc -> { location = l, vx = vx, vy = vy, scale = sc })
+    D.succeed BoardConfig
         |> DP.required "location" sliderLocationDecoder
         |> DP.required "vx" D.float
         |> DP.required "vy" D.float
@@ -4133,8 +3925,8 @@ encodeSliderLocation l =
         Quadrant { xHalf, yHalf } ->
             E.object
                 [ ( "kind", E.string "Quadrant" )
-                , ( "xHalf", encodeHalf xHalf )
-                , ( "yHalf", encodeHalf yHalf )
+                , ( "xHalf", encodePairs halfPairs xHalf )
+                , ( "yHalf", encodePairs halfPairs yHalf )
                 ]
 
 
@@ -4149,82 +3941,28 @@ sliderLocationDecoder =
 
                     "Quadrant" ->
                         D.succeed (\x y -> Quadrant { xHalf = x, yHalf = y })
-                            |> DP.required "xHalf" halfDecoder
-                            |> DP.required "yHalf" halfDecoder
+                            |> DP.required "xHalf" (pairsDecoder halfPairs)
+                            |> DP.required "yHalf" (pairsDecoder halfPairs)
 
                     _ ->
                         D.fail <| "Unknown slider location kind: " ++ k
             )
 
 
-encodeHalf : Half -> E.Value
-encodeHalf h =
-    case h of
-        Lower ->
-            E.string "Lower"
-
-        Upper ->
-            E.string "Upper"
+halfPairs : JsonPairs Half
+halfPairs =
+    [ ( Lower, "Lower" )
+    , ( Upper, "Upper" )
+    ]
 
 
-halfDecoder : D.Decoder Half
-halfDecoder =
-    D.string
-        |> D.andThen
-            (\s ->
-                case s of
-                    "Lower" ->
-                        D.succeed Lower
-
-                    "Upper" ->
-                        D.succeed Upper
-
-                    _ ->
-                        D.fail <| "Unknown Half: " ++ s
-            )
-
-
-encodeMouseStatus : MouseStatus -> E.Value
-encodeMouseStatus m =
-    let
-        string =
-            case m of
-                UpOut ->
-                    "UpOut"
-
-                UpIn ->
-                    "UpIn"
-
-                DownOut ->
-                    "DownOut"
-
-                DownIn ->
-                    "DownIn"
-    in
-    E.string string
-
-
-mouseStatusDecoder : D.Decoder MouseStatus
-mouseStatusDecoder =
-    D.string
-        |> D.andThen
-            (\s ->
-                case s of
-                    "UpOut" ->
-                        D.succeed UpOut
-
-                    "UpIn" ->
-                        D.succeed UpIn
-
-                    "DownOut" ->
-                        D.succeed DownOut
-
-                    "DownIn" ->
-                        D.succeed DownIn
-
-                    _ ->
-                        D.fail <| "Unknown mouse status: " ++ s
-            )
+mouseStatusPairs : JsonPairs MouseStatus
+mouseStatusPairs =
+    [ ( UpOut, "UpOut" )
+    , ( UpIn, "UpIn" )
+    , ( DownOut, "DownOut" )
+    , ( DownIn, "DownIn" )
+    ]
 
 
 encodeAnimationState : AnimationState -> E.Value
@@ -4244,68 +3982,23 @@ encodeAnimationState a =
 
 animationStateDecoder : D.Decoder AnimationState
 animationStateDecoder =
-    D.nullable <|
-        D.map3 (\x y v -> { x = x, y = y, v = v })
-            (D.field "x" D.float)
-            (D.field "y" D.float)
-            (D.field "v" D.float)
+    D.succeed (\x y v -> { x = x, y = y, v = v })
+        |> DP.required "x" D.float
+        |> DP.required "y" D.float
+        |> DP.required "v" D.float
+        |> D.nullable
 
 
-encodePlayer : Player -> E.Value
-encodePlayer p =
-    case p of
-        Ptt ->
-            E.string "Ptt"
-
-        Cpr ->
-            E.string "Cpr"
+playerPairs : JsonPairs Player
+playerPairs =
+    [ ( Ptt, "Ptt" )
+    , ( Cpr, "Cpr" )
+    ]
 
 
-playerDecoder : D.Decoder Player
-playerDecoder =
-    D.string
-        |> D.andThen
-            (\s ->
-                case s of
-                    "Ptt" ->
-                        D.succeed Ptt
-
-                    "Cpr" ->
-                        D.succeed Cpr
-
-                    _ ->
-                        D.fail <| "Unknown player: " ++ s
-            )
-
-
-encodeOppReceiver : OppReceiver -> E.Value
-encodeOppReceiver p =
-    case p of
-        Opp ->
-            E.string "Opp"
-
-        Slf ->
-            E.string "Slf"
-
-        Discard ->
-            E.string "Discard"
-
-
-oppReceiverDecoder : D.Decoder OppReceiver
-oppReceiverDecoder =
-    D.string
-        |> D.andThen
-            (\s ->
-                case s of
-                    "Opp" ->
-                        D.succeed Opp
-
-                    "Slf" ->
-                        D.succeed Slf
-
-                    "Discard" ->
-                        D.succeed Discard
-
-                    _ ->
-                        D.fail <| "Unknown opp receiver: " ++ s
-            )
+oppReceiverPairs : JsonPairs OppReceiver
+oppReceiverPairs =
+    [ ( Opp, "Opp" )
+    , ( Slf, "Slf" )
+    , ( Discard, "Discard" )
+    ]

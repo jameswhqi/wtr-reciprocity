@@ -72,12 +72,15 @@ type alias Model =
 
 type Client
     = Visitor String
-    | Prolific
-        { prolificPid : String
-        , studyId : String
-        , sessionId : String
-        , completionCode : String
-        }
+    | Prolific ProlificConfig
+
+
+type alias ProlificConfig =
+    { prolificPid : String
+    , studyId : String
+    , sessionId : String
+    , completionCode : String
+    }
 
 
 type ExptModel
@@ -581,23 +584,12 @@ setExpt f m =
 
 urlParser : UP.Parser (UrlConfig -> a) a
 urlParser =
-    succeed
-        (\i d w p r pp st se ->
-            { initStage = i
-            , debug = d
-            , waitSpeedRatio = w
-            , nPrtcRounds = p
-            , nRealRounds = r
-            , prolificPid = pp
-            , studyId = st
-            , sessionId = se
-            }
-        )
+    succeed UrlConfig
         |> apply
             (UQ.enum "initstage"
                 (DI.fromList
                     [ ( "consent", ESConsent )
-                    , ( "test", ESTest )
+                    , ( "ttrl", ESTtrl )
                     , ( "test", ESTest )
                     , ( "real", ESReal )
                     , ( "debrief", ESDebrief )
@@ -668,18 +660,7 @@ encode m =
 
 decoder : D.Decoder Model
 decoder =
-    D.succeed
-        (\c e t d w np nr f ->
-            { client = c
-            , expt = e
-            , testData = t
-            , debug = d
-            , waitSpeedRatio = w
-            , nPrtcRounds = np
-            , nRealRounds = nr
-            , failCount = f
-            }
-        )
+    D.succeed Model
         |> DP.required "client" clientDecoder
         |> DP.required "expt" exptDecoder
         |> DP.required "testData" (D.list TT.roundDataDecoder)
@@ -716,23 +697,16 @@ clientDecoder =
             (\k ->
                 case k of
                     "Visitor" ->
-                        D.succeed (\i -> Visitor i)
+                        D.succeed Visitor
                             |> DP.required "id" D.string
 
                     "Prolific" ->
-                        D.succeed
-                            (\p st se c ->
-                                Prolific
-                                    { prolificPid = p
-                                    , studyId = st
-                                    , sessionId = se
-                                    , completionCode = c
-                                    }
-                            )
+                        D.succeed ProlificConfig
                             |> DP.required "prolificPid" D.string
                             |> DP.required "studyId" D.string
                             |> DP.required "sessionId" D.string
                             |> DP.required "completionCode" D.string
+                            |> D.map Prolific
 
                     _ ->
                         D.fail <| "Unknown kind: " ++ k

@@ -5,8 +5,10 @@ import Css as S
 import Json.Decode as D
 import Json.Encode as E
 import List as L
+import List.Extra as LE
 import Maybe as M
 import Platform.Cmd as C
+import Tuple as T
 
 
 type alias BBox =
@@ -19,6 +21,10 @@ type alias Point =
 
 type alias Setter a b =
     (b -> b) -> a -> a
+
+
+type alias JsonPairs a =
+    List ( a, String )
 
 
 maybeToList : Maybe a -> List a
@@ -107,3 +113,27 @@ buttonStyle =
             , S.borderColor <| colorToCss <| grays 16
             ]
         ]
+
+
+encodePairs : List ( a, String ) -> a -> E.Value
+encodePairs l a =
+    LE.find (\( b, _ ) -> a == b) l
+        |> M.map T.second
+        |> M.withDefault ""
+        |> E.string
+
+
+pairsDecoder : List ( a, String ) -> D.Decoder a
+pairsDecoder l =
+    D.string
+        |> D.andThen
+            (\a ->
+                LE.find (\( _, b ) -> a == b) l
+                    |> M.map (T.first >> D.succeed)
+                    |> M.withDefault (D.fail <| "Unknown string: " ++ a)
+            )
+
+
+encodeMaybe : (a -> E.Value) -> Maybe a -> E.Value
+encodeMaybe f ma =
+    ma |> M.map f |> M.withDefault E.null

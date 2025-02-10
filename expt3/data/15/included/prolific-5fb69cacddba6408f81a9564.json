@@ -1,0 +1,339 @@
+{
+    "client": {
+        "workerId": "prolific-5fb69cacddba6408f81a9564",
+        "studyId": "6467ebb2118bcdc836ae7894",
+        "sessionId": "652ee30a495ba99c7cfc6022",
+        "completionCode": "63w0k6wn"
+    },
+    "testData": [
+        {
+            "round": 1,
+            "player": "Ptt",
+            "boardConfig": {
+                "vx": 0.5016754609042957,
+                "vy": 0.8379308384678422,
+                "scale": 0.4846379032231018
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": 0.800757941215608,
+            "predLambda": null,
+            "cprLambda": null,
+            "memory": null,
+            "actTime": 4.75,
+            "reviewTime": 1.577
+        },
+        {
+            "round": 2,
+            "player": "Cpr",
+            "boardConfig": {
+                "vx": 0.4058074761385353,
+                "vy": 0.7879278063038542,
+                "scale": 0.48811168409114253
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": null,
+            "predLambda": 0.6142315968316756,
+            "cprLambda": 0.0213411150520606,
+            "memory": null,
+            "actTime": 5.005,
+            "reviewTime": 1
+        },
+        {
+            "round": 3,
+            "player": "Ptt",
+            "boardConfig": {
+                "vx": 0.6230293450237776,
+                "vy": 0.5142683999262646,
+                "scale": 0.40244712950946276
+            },
+            "oppReceiver": "Slf",
+            "pttLambda": 0.6593906675504726,
+            "predLambda": null,
+            "cprLambda": null,
+            "memory": null,
+            "actTime": 17.272,
+            "reviewTime": 1.091
+        },
+        {
+            "round": 4,
+            "player": "Cpr",
+            "boardConfig": {
+                "vx": 0.5130372340313335,
+                "vy": 0.8173259688734001,
+                "scale": 0.4796524942712636
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": null,
+            "predLambda": 0.9284932501863278,
+            "cprLambda": -0.044065843442890086,
+            "memory": null,
+            "actTime": 4.819,
+            "reviewTime": 0.763
+        },
+        {
+            "round": 5,
+            "player": "Ptt",
+            "boardConfig": {
+                "vx": 0.1395144484930549,
+                "vy": 0.8490363903270435,
+                "scale": 0.47068275722088637
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": 0.020273807440200336,
+            "predLambda": null,
+            "cprLambda": null,
+            "memory": 0.08097590058702929,
+            "actTime": 5.31,
+            "reviewTime": 1.867
+        },
+        {
+            "round": 6,
+            "player": "Cpr",
+            "boardConfig": {
+                "vx": 0.5013253964414671,
+                "vy": 0.5667381856640695,
+                "scale": 0.48977715736052185
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": null,
+            "predLambda": 0.0004213140019038492,
+            "cprLambda": 0.07222832773483043,
+            "memory": null,
+            "actTime": 3.983,
+            "reviewTime": 45.776
+        },
+        {
+            "round": 7,
+            "player": "Ptt",
+            "boardConfig": {
+                "vx": 0.15828455249723916,
+                "vy": 0.936864412826561,
+                "scale": 0.4201449686079331
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": 0.6678022423498353,
+            "predLambda": null,
+            "cprLambda": null,
+            "memory": null,
+            "actTime": 6.255,
+            "reviewTime": 1.01
+        },
+        {
+            "round": 8,
+            "player": "Cpr",
+            "boardConfig": {
+                "vx": 0.4688365639021241,
+                "vy": 0.822181453249173,
+                "scale": 0.4867018424247915
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": null,
+            "predLambda": -0.00695993567983508,
+            "cprLambda": 0.048105417270449286,
+            "memory": null,
+            "actTime": 5.611,
+            "reviewTime": 1.569
+        },
+        {
+            "round": 9,
+            "player": "Ptt",
+            "boardConfig": {
+                "vx": 0.4453197318111139,
+                "vy": 0.3402675591745943,
+                "scale": 0.4449918613169061
+            },
+            "oppReceiver": "Discard",
+            "pttLambda": -0.01748868112341188,
+            "predLambda": null,
+            "cprLambda": null,
+            "memory": null,
+            "actTime": 6.896,
+            "reviewTime": 0.639
+        },
+        {
+            "round": 10,
+            "player": "Cpr",
+            "boardConfig": {
+                "vx": 0.4463891524336224,
+                "vy": 0.4030347829805367,
+                "scale": 0.44161933489355965
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": null,
+            "predLambda": -0.009526023802445696,
+            "cprLambda": 0.09973802394522438,
+            "memory": null,
+            "actTime": 12.282,
+            "reviewTime": 0.71
+        },
+        {
+            "round": 11,
+            "player": "Ptt",
+            "boardConfig": {
+                "vx": 0.3820604747500924,
+                "vy": 0.649604612727576,
+                "scale": 0.4701494150126395
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": 0.6779465914009256,
+            "predLambda": null,
+            "cprLambda": null,
+            "memory": null,
+            "actTime": 6.291,
+            "reviewTime": 1.097
+        },
+        {
+            "round": 12,
+            "player": "Cpr",
+            "boardConfig": {
+                "vx": 0.5260554947704184,
+                "vy": 0.39157523412222695,
+                "scale": 0.4700584970740464
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": null,
+            "predLambda": 0.05325266484455722,
+            "cprLambda": -0.07129243930410432,
+            "memory": null,
+            "actTime": 3.769,
+            "reviewTime": 0.695
+        },
+        {
+            "round": 13,
+            "player": "Ptt",
+            "boardConfig": {
+                "vx": 0.24066605832788307,
+                "vy": 0.6566792720402896,
+                "scale": 0.46293052763956577
+            },
+            "oppReceiver": "Slf",
+            "pttLambda": 0.02798173128913569,
+            "predLambda": null,
+            "cprLambda": null,
+            "memory": null,
+            "actTime": 4.568,
+            "reviewTime": 0.906
+        },
+        {
+            "round": 14,
+            "player": "Cpr",
+            "boardConfig": {
+                "vx": 0.38060055034515056,
+                "vy": 0.7432691767695702,
+                "scale": 0.4635368749023307
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": null,
+            "predLambda": -0.03341010352041244,
+            "cprLambda": 0.08464045050078711,
+            "memory": null,
+            "actTime": 5.932,
+            "reviewTime": 0.817
+        },
+        {
+            "round": 15,
+            "player": "Ptt",
+            "boardConfig": {
+                "vx": 0.5053908596785862,
+                "vy": 0.5710467501016794,
+                "scale": 0.4195088913542294
+            },
+            "oppReceiver": "Discard",
+            "pttLambda": 0.7575279469962829,
+            "predLambda": null,
+            "cprLambda": null,
+            "memory": null,
+            "actTime": 6.955,
+            "reviewTime": 1.336
+        },
+        {
+            "round": 16,
+            "player": "Cpr",
+            "boardConfig": {
+                "vx": 0.46750003934911993,
+                "vy": 0.6233279540997451,
+                "scale": 0.49675741088905323
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": null,
+            "predLambda": -0.012941226413322801,
+            "cprLambda": -0.02799299378979228,
+            "memory": null,
+            "actTime": 6.641,
+            "reviewTime": 1.193
+        },
+        {
+            "round": 17,
+            "player": "Ptt",
+            "boardConfig": {
+                "vx": 0.5282356475478921,
+                "vy": 0.3896316955973668,
+                "scale": 0.4180255924035248
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": -0.005228342115379756,
+            "predLambda": null,
+            "cprLambda": null,
+            "memory": 0.06312017312061653,
+            "actTime": 9.314,
+            "reviewTime": 0.664
+        },
+        {
+            "round": 18,
+            "player": "Cpr",
+            "boardConfig": {
+                "vx": 0.47372636519250005,
+                "vy": 0.4619742860973796,
+                "scale": 0.44225657880430536
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": null,
+            "predLambda": 0.021910644685163093,
+            "cprLambda": -0.005922201055380286,
+            "memory": null,
+            "actTime": 3.695,
+            "reviewTime": 1.167
+        },
+        {
+            "round": 19,
+            "player": "Ptt",
+            "boardConfig": {
+                "vx": 0.1888590028480963,
+                "vy": 0.41243912568051266,
+                "scale": 0.4650717891570769
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": 0.6806856833077046,
+            "predLambda": null,
+            "cprLambda": null,
+            "memory": null,
+            "actTime": 7.442,
+            "reviewTime": 0.973
+        },
+        {
+            "round": 20,
+            "player": "Cpr",
+            "boardConfig": {
+                "vx": 0.48226046110787013,
+                "vy": 0.6530765248914256,
+                "scale": 0.40761311211782575
+            },
+            "oppReceiver": "Opp",
+            "pttLambda": null,
+            "predLambda": 0.17816388327106755,
+            "cprLambda": 0.07890572108252733,
+            "memory": null,
+            "actTime": 5.311,
+            "reviewTime": 0.987
+        }
+    ],
+    "debrief": {
+        "adjust": "y",
+        "adjustHow": "I tried to give them a slight increase in value beyond doing what was completely in my favor. I tried to trick them a bit though by doing things slightly differently from time to time...so maybe not that nice...?",
+        "believeBegin": 3,
+        "believeEnd": 2,
+        "confusing": "n",
+        "cprToPtt": -3,
+        "pttToCpr": 2
+    }
+}

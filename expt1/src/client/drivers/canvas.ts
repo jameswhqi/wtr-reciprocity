@@ -174,7 +174,8 @@ const canvasContainerClass = style({ margin: 'auto' });
 const canvasClass = style({
   backgroundColor: '#fafafa',
   width: '100%',
-  height: '100%'
+  height: '100%',
+  display: 'block'
 });
 
 const canvasContainer = document.querySelector('#canvasContainer') as HTMLElement;

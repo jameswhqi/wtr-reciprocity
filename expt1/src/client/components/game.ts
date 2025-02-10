@@ -238,7 +238,9 @@ export function Game(sources: Sources): Sinks {
       .compose(sc(state$))
       .filter(([_, s]) => s.stage === 'donePractice' && client.kind !== 'preview')
       .map(_ => xs.of<Stage>('paired').compose(delay(randomUnif(minPairingTime, maxPairingTime) * 1000 / speedRatio)))
-      .flatten()
+      .flatten(),
+    xs.of<Stage>('paired').compose(delay(100)),
+    xs.of<Stage>('real').compose(delay(3000))
   );
   const goToPreview$ = button.event
     .compose(sc(state$))
@@ -359,7 +361,7 @@ export function Game(sources: Sources): Sinks {
 
   // model
   const initR$ = xs.of(always<State>({
-    stage: 'prePractice',
+    stage: 'pairing',
     trialNumber: 1,
     readyForNext: false,
     minTotal: 0,

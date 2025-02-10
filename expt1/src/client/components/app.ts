@@ -119,7 +119,7 @@ export function App(sources: Sources): Sinks {
 
   // model
   const initR$ = xs.of(always<State>({
-    stage: 'welcome',
+    stage: 'debrief',
     showTutorial: false,
     failCount: 0
   }));
